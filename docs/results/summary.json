@@ -1,0 +1,946 @@
+[
+ {
+  "scenario": "A-prog",
+  "mode": "PROGRESSIVE",
+  "providers": "A",
+  "agents": 100,
+  "duration_s": 1200,
+  "workers": 1,
+  "util_talk": 0.522,
+  "util_busy": 0.565,
+  "calls_created": 2732,
+  "calls_initiated": 2708,
+  "answered": 532,
+  "connected": 532,
+  "abandoned": 0,
+  "abandon_rate": 0.0,
+  "late_connects": 0,
+  "avg_answer_to_agent_s": 0.35,
+  "cancelled": 0,
+  "failed": 2159,
+  "connects_per_agent_hour": 15.96,
+  "safety_verdicts": {
+   "APPROVED": 1201
+  },
+  "event_outcomes": {
+   "applied": 5854,
+   "after_terminal": 1
+  },
+  "inbox_exact_dups_dropped": 0,
+  "allocator": {
+   "placed": 2708,
+   "no_borrower": 0,
+   "no_agent": 0,
+   "rejected_permit": 0,
+   "provider_error": 18,
+   "provider_timeout": 6,
+   "agent_lost": 0,
+   "no_provider": 0
+  },
+  "housekeeping": {
+   "bridged_late": 0,
+   "abandoned": 0,
+   "recovered": 0,
+   "reconciled_failed": 1,
+   "stale_closed": 1,
+   "leases_expired": 0,
+   "presence_logouts": 0
+  },
+  "provider_trips": {
+   "A": 0
+  },
+  "invariant_errors": [],
+  "final_invariants": [],
+  "log": []
+ },
+ {
+  "scenario": "A-pred",
+  "mode": "PREDICTIVE",
+  "providers": "A",
+  "agents": 100,
+  "duration_s": 1200,
+  "workers": 1,
+  "util_talk": 0.762,
+  "util_busy": 0.828,
+  "calls_created": 3946,
+  "calls_initiated": 3920,
+  "answered": 780,
+  "connected": 780,
+  "abandoned": 0,
+  "abandon_rate": 0.0,
+  "late_connects": 0,
+  "avg_answer_to_agent_s": 0.34,
+  "cancelled": 20,
+  "failed": 3094,
+  "connects_per_agent_hour": 23.4,
+  "safety_verdicts": {
+   "FALLBACK_PROGRESSIVE": 31,
+   "REDUCED": 530,
+   "REJECTED": 640
+  },
+  "event_outcomes": {
+   "applied": 8472,
+   "after_terminal": 20
+  },
+  "inbox_exact_dups_dropped": 0,
+  "allocator": {
+   "placed": 3920,
+   "no_borrower": 0,
+   "no_agent": 0,
+   "rejected_permit": 0,
+   "provider_error": 17,
+   "provider_timeout": 9,
+   "agent_lost": 0,
+   "no_provider": 0
+  },
+  "housekeeping": {
+   "bridged_late": 0,
+   "abandoned": 0,
+   "recovered": 0,
+   "reconciled_failed": 4,
+   "stale_closed": 0,
+   "leases_expired": 0,
+   "presence_logouts": 0
+  },
+  "provider_trips": {
+   "A": 0
+  },
+  "invariant_errors": [],
+  "final_invariants": [],
+  "log": []
+ },
+ {
+  "scenario": "B-prog",
+  "mode": "PROGRESSIVE",
+  "providers": "A",
+  "agents": 100,
+  "duration_s": 1200,
+  "workers": 1,
+  "util_talk": 0.68,
+  "util_busy": 0.757,
+  "calls_created": 1903,
+  "calls_initiated": 1889,
+  "answered": 924,
+  "connected": 924,
+  "abandoned": 0,
+  "abandon_rate": 0.0,
+  "late_connects": 0,
+  "avg_answer_to_agent_s": 0.33,
+  "cancelled": 0,
+  "failed": 954,
+  "connects_per_agent_hour": 27.72,
+  "safety_verdicts": {
+   "APPROVED": 1201
+  },
+  "event_outcomes": {
+   "applied": 4616
+  },
+  "inbox_exact_dups_dropped": 0,
+  "allocator": {
+   "placed": 1889,
+   "no_borrower": 0,
+   "no_agent": 0,
+   "rejected_permit": 0,
+   "provider_error": 8,
+   "provider_timeout": 6,
+   "agent_lost": 0,
+   "no_provider": 0
+  },
+  "housekeeping": {
+   "bridged_late": 0,
+   "abandoned": 0,
+   "recovered": 0,
+   "reconciled_failed": 2,
+   "stale_closed": 0,
+   "leases_expired": 0,
+   "presence_logouts": 0
+  },
+  "provider_trips": {
+   "A": 0
+  },
+  "invariant_errors": [],
+  "final_invariants": [],
+  "log": []
+ },
+ {
+  "scenario": "B-pred",
+  "mode": "PREDICTIVE",
+  "providers": "A",
+  "agents": 100,
+  "duration_s": 1200,
+  "workers": 1,
+  "util_talk": 0.747,
+  "util_busy": 0.832,
+  "calls_created": 2063,
+  "calls_initiated": 2053,
+  "answered": 1028,
+  "connected": 1028,
+  "abandoned": 0,
+  "abandon_rate": 0.0,
+  "late_connects": 0,
+  "avg_answer_to_agent_s": 0.34,
+  "cancelled": 6,
+  "failed": 1009,
+  "connects_per_agent_hour": 30.84,
+  "safety_verdicts": {
+   "FALLBACK_PROGRESSIVE": 31,
+   "REJECTED": 447,
+   "REDUCED": 723
+  },
+  "event_outcomes": {
+   "applied": 5034,
+   "after_terminal": 7
+  },
+  "inbox_exact_dups_dropped": 0,
+  "allocator": {
+   "placed": 2053,
+   "no_borrower": 0,
+   "no_agent": 0,
+   "rejected_permit": 0,
+   "provider_error": 4,
+   "provider_timeout": 6,
+   "agent_lost": 0,
+   "no_provider": 0
+  },
+  "housekeeping": {
+   "bridged_late": 0,
+   "abandoned": 0,
+   "recovered": 0,
+   "reconciled_failed": 1,
+   "stale_closed": 1,
+   "leases_expired": 0,
+   "presence_logouts": 0
+  },
+  "provider_trips": {
+   "A": 0
+  },
+  "invariant_errors": [],
+  "final_invariants": [],
+  "log": []
+ },
+ {
+  "scenario": "C-prog",
+  "mode": "PROGRESSIVE",
+  "providers": "A",
+  "agents": 100,
+  "duration_s": 1200,
+  "workers": 1,
+  "util_talk": 0.853,
+  "util_busy": 0.904,
+  "calls_created": 950,
+  "calls_initiated": 940,
+  "answered": 636,
+  "connected": 636,
+  "abandoned": 0,
+  "abandon_rate": 0.0,
+  "late_connects": 0,
+  "avg_answer_to_agent_s": 0.33,
+  "cancelled": 0,
+  "failed": 299,
+  "connects_per_agent_hour": 19.08,
+  "safety_verdicts": {
+   "APPROVED": 1201
+  },
+  "event_outcomes": {
+   "applied": 2423,
+   "after_terminal": 1
+  },
+  "inbox_exact_dups_dropped": 0,
+  "allocator": {
+   "placed": 940,
+   "no_borrower": 0,
+   "no_agent": 0,
+   "rejected_permit": 0,
+   "provider_error": 7,
+   "provider_timeout": 3,
+   "agent_lost": 0,
+   "no_provider": 0
+  },
+  "housekeeping": {
+   "bridged_late": 0,
+   "abandoned": 0,
+   "recovered": 0,
+   "reconciled_failed": 2,
+   "stale_closed": 1,
+   "leases_expired": 0,
+   "presence_logouts": 0
+  },
+  "provider_trips": {
+   "A": 0
+  },
+  "invariant_errors": [],
+  "final_invariants": [],
+  "log": []
+ },
+ {
+  "scenario": "C-pred",
+  "mode": "PREDICTIVE",
+  "providers": "A",
+  "agents": 100,
+  "duration_s": 1200,
+  "workers": 1,
+  "util_talk": 0.866,
+  "util_busy": 0.918,
+  "calls_created": 939,
+  "calls_initiated": 934,
+  "answered": 655,
+  "connected": 655,
+  "abandoned": 0,
+  "abandon_rate": 0.0,
+  "late_connects": 0,
+  "avg_answer_to_agent_s": 0.33,
+  "cancelled": 0,
+  "failed": 275,
+  "connects_per_agent_hour": 19.65,
+  "safety_verdicts": {
+   "FALLBACK_PROGRESSIVE": 31,
+   "REDUCED": 508,
+   "REJECTED": 662
+  },
+  "event_outcomes": {
+   "applied": 2423,
+   "after_terminal": 1
+  },
+  "inbox_exact_dups_dropped": 0,
+  "allocator": {
+   "placed": 934,
+   "no_borrower": 0,
+   "no_agent": 0,
+   "rejected_permit": 0,
+   "provider_error": 3,
+   "provider_timeout": 2,
+   "agent_lost": 0,
+   "no_provider": 0
+  },
+  "housekeeping": {
+   "bridged_late": 0,
+   "abandoned": 0,
+   "recovered": 0,
+   "reconciled_failed": 1,
+   "stale_closed": 1,
+   "leases_expired": 0,
+   "presence_logouts": 0
+  },
+  "provider_trips": {
+   "A": 0
+  },
+  "invariant_errors": [],
+  "final_invariants": [],
+  "log": []
+ },
+ {
+  "scenario": "D-prog",
+  "mode": "PROGRESSIVE",
+  "providers": "A",
+  "agents": 100,
+  "duration_s": 1200,
+  "workers": 1,
+  "util_talk": 0.599,
+  "util_busy": 0.645,
+  "calls_created": 2373,
+  "calls_initiated": 2347,
+  "answered": 534,
+  "connected": 534,
+  "abandoned": 0,
+  "abandon_rate": 0.0,
+  "late_connects": 0,
+  "avg_answer_to_agent_s": 0.35,
+  "cancelled": 0,
+  "failed": 1772,
+  "connects_per_agent_hour": 16.02,
+  "safety_verdicts": {
+   "APPROVED": 1201
+  },
+  "event_outcomes": {
+   "applied": 5128,
+   "after_terminal": 1
+  },
+  "inbox_exact_dups_dropped": 0,
+  "allocator": {
+   "placed": 2347,
+   "no_borrower": 0,
+   "no_agent": 0,
+   "rejected_permit": 0,
+   "provider_error": 20,
+   "provider_timeout": 6,
+   "agent_lost": 0,
+   "no_provider": 0
+  },
+  "housekeeping": {
+   "bridged_late": 0,
+   "abandoned": 0,
+   "recovered": 0,
+   "reconciled_failed": 4,
+   "stale_closed": 1,
+   "leases_expired": 0,
+   "presence_logouts": 0
+  },
+  "provider_trips": {
+   "A": 0
+  },
+  "invariant_errors": [],
+  "final_invariants": [],
+  "log": []
+ },
+ {
+  "scenario": "D-pred",
+  "mode": "PREDICTIVE",
+  "providers": "A",
+  "agents": 100,
+  "duration_s": 1200,
+  "workers": 1,
+  "util_talk": 0.746,
+  "util_busy": 0.805,
+  "calls_created": 3844,
+  "calls_initiated": 3818,
+  "answered": 695,
+  "connected": 694,
+  "abandoned": 0,
+  "abandon_rate": 0.0,
+  "late_connects": 0,
+  "avg_answer_to_agent_s": 0.33,
+  "cancelled": 37,
+  "failed": 3001,
+  "connects_per_agent_hour": 20.82,
+  "safety_verdicts": {
+   "FALLBACK_PROGRESSIVE": 31,
+   "REDUCED": 663,
+   "REJECTED": 507
+  },
+  "event_outcomes": {
+   "applied": 8119,
+   "after_terminal": 38
+  },
+  "inbox_exact_dups_dropped": 0,
+  "allocator": {
+   "placed": 3818,
+   "no_borrower": 0,
+   "no_agent": 0,
+   "rejected_permit": 0,
+   "provider_error": 20,
+   "provider_timeout": 6,
+   "agent_lost": 0,
+   "no_provider": 0
+  },
+  "housekeeping": {
+   "bridged_late": 0,
+   "abandoned": 0,
+   "recovered": 0,
+   "reconciled_failed": 1,
+   "stale_closed": 0,
+   "leases_expired": 0,
+   "presence_logouts": 0
+  },
+  "provider_trips": {
+   "A": 0
+  },
+  "invariant_errors": [],
+  "final_invariants": [],
+  "log": []
+ },
+ {
+  "scenario": "F1-providerB",
+  "mode": "PREDICTIVE",
+  "providers": "B",
+  "agents": 100,
+  "duration_s": 1200,
+  "workers": 1,
+  "util_talk": 0.72,
+  "util_busy": 0.803,
+  "calls_created": 2137,
+  "calls_initiated": 1959,
+  "answered": 993,
+  "connected": 993,
+  "abandoned": 0,
+  "abandon_rate": 0.0,
+  "late_connects": 78,
+  "avg_answer_to_agent_s": 0.98,
+  "cancelled": 17,
+  "failed": 1090,
+  "connects_per_agent_hour": 29.79,
+  "safety_verdicts": {
+   "FALLBACK_PROGRESSIVE": 31,
+   "REDUCED": 744,
+   "REJECTED": 426
+  },
+  "event_outcomes": {
+   "applied": 4864,
+   "duplicate": 42,
+   "stale": 31,
+   "after_terminal": 76
+  },
+  "inbox_exact_dups_dropped": 794,
+  "allocator": {
+   "placed": 1959,
+   "no_borrower": 0,
+   "no_agent": 0,
+   "rejected_permit": 0,
+   "provider_error": 71,
+   "provider_timeout": 107,
+   "agent_lost": 0,
+   "no_provider": 0
+  },
+  "housekeeping": {
+   "bridged_late": 0,
+   "abandoned": 0,
+   "recovered": 29,
+   "reconciled_failed": 51,
+   "stale_closed": 5,
+   "leases_expired": 0,
+   "presence_logouts": 0
+  },
+  "provider_trips": {
+   "B": 0
+  },
+  "invariant_errors": [],
+  "final_invariants": [],
+  "log": []
+ },
+ {
+  "scenario": "F2-outage",
+  "mode": "PREDICTIVE",
+  "providers": "A",
+  "agents": 100,
+  "duration_s": 1200,
+  "workers": 1,
+  "util_talk": 0.756,
+  "util_busy": 0.823,
+  "calls_created": 2600,
+  "calls_initiated": 2565,
+  "answered": 788,
+  "connected": 787,
+  "abandoned": 0,
+  "abandon_rate": 0.0,
+  "late_connects": 3,
+  "avg_answer_to_agent_s": 0.66,
+  "cancelled": 30,
+  "failed": 1733,
+  "connects_per_agent_hour": 23.61,
+  "safety_verdicts": {
+   "FALLBACK_PROGRESSIVE": 31,
+   "REDUCED": 586,
+   "REJECTED": 584
+  },
+  "event_outcomes": {
+   "applied": 5736,
+   "after_terminal": 38
+  },
+  "inbox_exact_dups_dropped": 0,
+  "allocator": {
+   "placed": 2565,
+   "no_borrower": 0,
+   "no_agent": 0,
+   "rejected_permit": 0,
+   "provider_error": 13,
+   "provider_timeout": 14,
+   "agent_lost": 0,
+   "no_provider": 8
+  },
+  "housekeeping": {
+   "bridged_late": 0,
+   "abandoned": 0,
+   "recovered": 0,
+   "reconciled_failed": 12,
+   "stale_closed": 0,
+   "leases_expired": 0,
+   "presence_logouts": 0
+  },
+  "provider_trips": {
+   "A": 9
+  },
+  "invariant_errors": [],
+  "final_invariants": [],
+  "log": [
+   {
+    "t": 300.0,
+    "fault": "outage",
+    "arg": "('A', True)"
+   },
+   {
+    "t": 390.0,
+    "fault": "outage",
+    "arg": "('A', False)"
+   }
+  ]
+ },
+ {
+  "scenario": "F2b-outage-failover",
+  "mode": "PREDICTIVE",
+  "providers": "A,B",
+  "agents": 100,
+  "duration_s": 1200,
+  "workers": 1,
+  "util_talk": 0.76,
+  "util_busy": 0.824,
+  "calls_created": 2704,
+  "calls_initiated": 2676,
+  "answered": 768,
+  "connected": 768,
+  "abandoned": 0,
+  "abandon_rate": 0.0,
+  "late_connects": 4,
+  "avg_answer_to_agent_s": 0.67,
+  "cancelled": 28,
+  "failed": 1868,
+  "connects_per_agent_hour": 23.04,
+  "safety_verdicts": {
+   "FALLBACK_PROGRESSIVE": 31,
+   "REDUCED": 558,
+   "REJECTED": 612
+  },
+  "event_outcomes": {
+   "applied": 5961,
+   "after_terminal": 35,
+   "duplicate": 1
+  },
+  "inbox_exact_dups_dropped": 1,
+  "allocator": {
+   "placed": 2676,
+   "no_borrower": 0,
+   "no_agent": 0,
+   "rejected_permit": 0,
+   "provider_error": 20,
+   "provider_timeout": 8,
+   "agent_lost": 0,
+   "no_provider": 0
+  },
+  "housekeeping": {
+   "bridged_late": 0,
+   "abandoned": 0,
+   "recovered": 0,
+   "reconciled_failed": 7,
+   "stale_closed": 0,
+   "leases_expired": 0,
+   "presence_logouts": 0
+  },
+  "provider_trips": {
+   "A": 2,
+   "B": 0
+  },
+  "invariant_errors": [],
+  "final_invariants": [],
+  "log": [
+   {
+    "t": 300.0,
+    "fault": "outage",
+    "arg": "('A', True)"
+   },
+   {
+    "t": 390.0,
+    "fault": "outage",
+    "arg": "('A', False)"
+   }
+  ]
+ },
+ {
+  "scenario": "F3-agent-drop",
+  "mode": "PREDICTIVE",
+  "providers": "A",
+  "agents": 100,
+  "duration_s": 1200,
+  "workers": 1,
+  "util_talk": 0.752,
+  "util_busy": 0.817,
+  "calls_created": 3098,
+  "calls_initiated": 3079,
+  "answered": 569,
+  "connected": 568,
+  "abandoned": 0,
+  "abandon_rate": 0.0,
+  "late_connects": 0,
+  "avg_answer_to_agent_s": 0.33,
+  "cancelled": 56,
+  "failed": 2427,
+  "connects_per_agent_hour": 17.04,
+  "safety_verdicts": {
+   "FALLBACK_PROGRESSIVE": 31,
+   "REDUCED": 504,
+   "REJECTED": 666
+  },
+  "event_outcomes": {
+   "applied": 6581,
+   "after_terminal": 58
+  },
+  "inbox_exact_dups_dropped": 0,
+  "allocator": {
+   "placed": 3079,
+   "no_borrower": 0,
+   "no_agent": 0,
+   "rejected_permit": 0,
+   "provider_error": 13,
+   "provider_timeout": 6,
+   "agent_lost": 0,
+   "no_provider": 0
+  },
+  "housekeeping": {
+   "bridged_late": 0,
+   "abandoned": 0,
+   "recovered": 0,
+   "reconciled_failed": 3,
+   "stale_closed": 0,
+   "leases_expired": 0,
+   "presence_logouts": 0
+  },
+  "provider_trips": {
+   "A": 0
+  },
+  "invariant_errors": [],
+  "final_invariants": [],
+  "log": [
+   {
+    "t": 400.0,
+    "fault": "agents_drop",
+    "arg": "40"
+   }
+  ]
+ },
+ {
+  "scenario": "F4-worker-crash",
+  "mode": "PREDICTIVE",
+  "providers": "A",
+  "agents": 100,
+  "duration_s": 1200,
+  "workers": 2,
+  "util_talk": 0.765,
+  "util_busy": 0.833,
+  "calls_created": 2596,
+  "calls_initiated": 2576,
+  "answered": 814,
+  "connected": 814,
+  "abandoned": 0,
+  "abandon_rate": 0.0,
+  "late_connects": 4,
+  "avg_answer_to_agent_s": 0.41,
+  "cancelled": 30,
+  "failed": 1721,
+  "connects_per_agent_hour": 24.42,
+  "safety_verdicts": {
+   "FALLBACK_PROGRESSIVE": 62,
+   "REJECTED": 742,
+   "REDUCED": 578
+  },
+  "event_outcomes": {
+   "applied": 5826,
+   "after_terminal": 30
+  },
+  "inbox_exact_dups_dropped": 0,
+  "allocator": {
+   "placed": 2576,
+   "no_borrower": 0,
+   "no_agent": 0,
+   "rejected_permit": 0,
+   "provider_error": 14,
+   "provider_timeout": 4,
+   "agent_lost": 0,
+   "no_provider": 0
+  },
+  "housekeeping": {
+   "bridged_late": 0,
+   "abandoned": 0,
+   "recovered": 0,
+   "reconciled_failed": 3,
+   "stale_closed": 0,
+   "leases_expired": 0,
+   "presence_logouts": 0
+  },
+  "provider_trips": {
+   "A": 0
+  },
+  "invariant_errors": [],
+  "final_invariants": [],
+  "log": [
+   {
+    "t": 200.0,
+    "fault": "crash_worker",
+    "arg": "('w1', 'after_dial')"
+   },
+   {
+    "t": 200.0,
+    "crash": "w1 crashed at after_dial (87618c1f)"
+   },
+   {
+    "t": 300.0,
+    "fault": "crash_worker",
+    "arg": "('w2', 'after_reserve')"
+   },
+   {
+    "t": 301.0,
+    "crash": "w2 crashed at after_reserve (94e02620)"
+   },
+   {
+    "t": 320.0,
+    "fault": "restart_worker",
+    "arg": "w1"
+   }
+  ]
+ },
+ {
+  "scenario": "F5-three-workers",
+  "mode": "PREDICTIVE",
+  "providers": "A",
+  "agents": 100,
+  "duration_s": 1200,
+  "workers": 3,
+  "util_talk": 0.768,
+  "util_busy": 0.834,
+  "calls_created": 2691,
+  "calls_initiated": 2676,
+  "answered": 786,
+  "connected": 786,
+  "abandoned": 0,
+  "abandon_rate": 0.0,
+  "late_connects": 0,
+  "avg_answer_to_agent_s": 0.33,
+  "cancelled": 21,
+  "failed": 1829,
+  "connects_per_agent_hour": 23.58,
+  "safety_verdicts": {
+   "FALLBACK_PROGRESSIVE": 93,
+   "REJECTED": 2889,
+   "REDUCED": 621
+  },
+  "event_outcomes": {
+   "applied": 5983,
+   "after_terminal": 21
+  },
+  "inbox_exact_dups_dropped": 0,
+  "allocator": {
+   "placed": 2676,
+   "no_borrower": 0,
+   "no_agent": 0,
+   "rejected_permit": 0,
+   "provider_error": 11,
+   "provider_timeout": 4,
+   "agent_lost": 0,
+   "no_provider": 0
+  },
+  "housekeeping": {
+   "bridged_late": 0,
+   "abandoned": 0,
+   "recovered": 0,
+   "reconciled_failed": 3,
+   "stale_closed": 0,
+   "leases_expired": 0,
+   "presence_logouts": 0
+  },
+  "provider_trips": {
+   "A": 0
+  },
+  "invariant_errors": [],
+  "final_invariants": [],
+  "log": []
+ },
+ {
+  "scenario": "F6-rate-jump",
+  "mode": "PREDICTIVE",
+  "providers": "A",
+  "agents": 100,
+  "duration_s": 1200,
+  "workers": 1,
+  "util_talk": 0.782,
+  "util_busy": 0.849,
+  "calls_created": 2800,
+  "calls_initiated": 2785,
+  "answered": 804,
+  "connected": 792,
+  "abandoned": 12,
+  "abandon_rate": 0.0149,
+  "late_connects": 0,
+  "avg_answer_to_agent_s": 0.34,
+  "cancelled": 59,
+  "failed": 1930,
+  "connects_per_agent_hour": 23.76,
+  "safety_verdicts": {
+   "FALLBACK_PROGRESSIVE": 899,
+   "REDUCED": 139,
+   "REJECTED": 160,
+   "APPROVED": 3
+  },
+  "event_outcomes": {
+   "applied": 6207,
+   "after_terminal": 71
+  },
+  "inbox_exact_dups_dropped": 0,
+  "allocator": {
+   "placed": 2785,
+   "no_borrower": 0,
+   "no_agent": 0,
+   "rejected_permit": 0,
+   "provider_error": 11,
+   "provider_timeout": 4,
+   "agent_lost": 0,
+   "no_provider": 0
+  },
+  "housekeeping": {
+   "bridged_late": 0,
+   "abandoned": 12,
+   "recovered": 0,
+   "reconciled_failed": 2,
+   "stale_closed": 0,
+   "leases_expired": 0,
+   "presence_logouts": 0
+  },
+  "provider_trips": {
+   "A": 0
+  },
+  "invariant_errors": [],
+  "final_invariants": [],
+  "log": []
+ },
+ {
+  "scenario": "F7-pacing-bug-5x",
+  "mode": "PREDICTIVE",
+  "providers": "A",
+  "agents": 100,
+  "duration_s": 1200,
+  "workers": 1,
+  "util_talk": 0.747,
+  "util_busy": 0.832,
+  "calls_created": 2063,
+  "calls_initiated": 2053,
+  "answered": 1028,
+  "connected": 1028,
+  "abandoned": 0,
+  "abandon_rate": 0.0,
+  "late_connects": 0,
+  "avg_answer_to_agent_s": 0.34,
+  "cancelled": 6,
+  "failed": 1009,
+  "connects_per_agent_hour": 30.84,
+  "safety_verdicts": {
+   "FALLBACK_PROGRESSIVE": 31,
+   "REJECTED": 447,
+   "REDUCED": 723
+  },
+  "event_outcomes": {
+   "applied": 5034,
+   "after_terminal": 7
+  },
+  "inbox_exact_dups_dropped": 0,
+  "allocator": {
+   "placed": 2053,
+   "no_borrower": 0,
+   "no_agent": 0,
+   "rejected_permit": 0,
+   "provider_error": 4,
+   "provider_timeout": 6,
+   "agent_lost": 0,
+   "no_provider": 0
+  },
+  "housekeeping": {
+   "bridged_late": 0,
+   "abandoned": 0,
+   "recovered": 0,
+   "reconciled_failed": 1,
+   "stale_closed": 1,
+   "leases_expired": 0,
+   "presence_logouts": 0
+  },
+  "provider_trips": {
+   "A": 0
+  },
+  "invariant_errors": [],
+  "final_invariants": [],
+  "log": []
+ }
+]
