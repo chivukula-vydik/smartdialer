@@ -4,9 +4,9 @@ A working prototype of an outbound collections dialer with progressive and predi
 where the predictive algorithm can never place a call directly. Every call goes through an
 independent Safety Controller that issues single-use permits from a ledger shared by all workers.
 
-```
-Campaign -> Pacing Engine -> Safety Controller -> Call Allocator -> Provider Router -> Telecom Provider
-```
+![SmartDialer workflow](docs/workflow.svg)
+
+State machines, concurrency and failure handling in detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 Results at a glance (100 agents, 20 simulated minutes, details in [docs/RESULTS.md](docs/RESULTS.md)):
 
