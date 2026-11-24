@@ -1,0 +1,303 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>smartdialer runs</title>
+<style>
+:root {
+  --bg: #fbfbfa; --panel: #ffffff; --ink: #1d1d1b; --muted: #6b6a66; --faint: #9a9994;
+  --line: #e4e3df; --hover: #f3f2ef; --sel: #eceae5;
+  --talk: #3566a8; --wrap: #8fb0d9; --dial: #d9a441; --free: #d8d6d0;
+  --asked: #a3a19a; --ok: #3566a8; --warn: #b7791f; --bad: #c0392b; --good: #2f7d4f;
+  --mono: ui-monospace, "Cascadia Mono", "SF Mono", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #161615; --panel: #1c1c1b; --ink: #e6e5e1; --muted: #9b9a95; --faint: #6d6c68;
+    --line: #2e2e2c; --hover: #232322; --sel: #2a2a28;
+    --talk: #6d9bd6; --wrap: #3f5f86; --dial: #b88a32; --free: #3a3a37;
+    --asked: #77766f; --ok: #6d9bd6; --warn: #d6a24a; --bad: #e0645a; --good: #5fae7e;
+  }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--ink);
+  font: 13px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+.num, td.n, .mono { font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: 12px; }
+a { color: inherit; }
+
+header { display: flex; justify-content: space-between; align-items: baseline; gap: 16px;
+  padding: 10px 16px; border-bottom: 1px solid var(--line); background: var(--panel); }
+header b { font-weight: 600; }
+header span { color: var(--muted); }
+
+.wrap { display: grid; grid-template-columns: 210px minmax(0, 1fr); min-height: calc(100vh - 41px); }
+nav { border-right: 1px solid var(--line); padding: 10px 0; background: var(--panel); }
+nav h4 { margin: 14px 16px 4px; font-size: 11px; font-weight: 600; color: var(--faint);
+  text-transform: uppercase; letter-spacing: .04em; }
+nav a { display: flex; justify-content: space-between; padding: 3px 16px; text-decoration: none;
+  border-left: 2px solid transparent; }
+nav a:hover { background: var(--hover); }
+nav a.on { background: var(--sel); border-left-color: var(--ok); }
+nav a .num { color: var(--muted); }
+nav a .bad { color: var(--bad); }
+
+main { padding: 14px 22px 40px; max-width: 1150px; }
+h1 { font-size: 17px; font-weight: 600; margin: 0 0 2px; }
+h2 { font-size: 13px; font-weight: 600; margin: 26px 0 6px; }
+.sub { color: var(--muted); }
+p { margin: 6px 0; }
+.facts { color: var(--muted); margin-top: 10px; }
+.facts b { color: var(--ink); font-weight: 600; font-family: var(--mono); font-size: 12px; }
+.facts .sep { color: var(--faint); margin: 0 6px; }
+
+.chart { position: relative; margin-top: 4px; }
+.chart .hd { display: flex; justify-content: space-between; gap: 12px; font-size: 12px; }
+.chart .hd .t { font-weight: 600; }
+.chart .hd .r { color: var(--muted); font-family: var(--mono); font-size: 11.5px; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis; }
+.key { display: inline-block; width: 8px; height: 8px; margin: 0 3px 0 9px; vertical-align: 0; }
+svg { display: block; width: 100%; overflow: visible; }
+svg text { fill: var(--faint); font: 10.5px var(--mono); }
+svg .grid { stroke: var(--line); }
+svg .mark { stroke: var(--muted); stroke-dasharray: 3 3; }
+svg .marklbl { fill: var(--muted); }
+svg .cursor { stroke: var(--ink); stroke-opacity: .35; }
+
+table { border-collapse: collapse; width: 100%; }
+th { text-align: left; font-weight: 600; font-size: 12px; color: var(--muted); padding: 5px 8px;
+  border-bottom: 1px solid var(--line); background: var(--bg); white-space: nowrap; }
+td { padding: 4px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+td.n, th.n { text-align: right; }
+tbody tr:hover { background: var(--hover); }
+tr.click { cursor: pointer; }
+.delta { color: var(--good); font-size: 11px; margin-left: 4px; }
+.bar { position: relative; }
+.bar i { position: absolute; left: 8px; bottom: 3px; height: 2px; background: var(--talk); opacity: .55; }
+.bad { color: var(--bad); }
+.v-A { color: var(--muted); } .v-R, .v-X { color: var(--warn); } .v-F { color: var(--ok); }
+
+.logbar { display: flex; gap: 14px; align-items: center; margin-bottom: 6px; color: var(--muted); }
+.logbar select { font: inherit; color: var(--ink); background: var(--panel); border: 1px solid var(--line);
+  padding: 2px 4px; }
+.log { position: relative; max-height: 380px; overflow: auto; border: 1px solid var(--line); background: var(--panel); }
+.log th { position: sticky; top: 0; }
+.log td.reason { white-space: nowrap; max-width: 0; width: 100%; overflow: hidden; text-overflow: ellipsis;
+  color: var(--muted); }
+.log tr.hit { background: var(--sel); }
+.note { color: var(--muted); font-size: 12px; margin-top: 18px; max-width: 760px; }
+
+@media (max-width: 760px) {
+  .wrap { grid-template-columns: minmax(0, 1fr); }
+  nav { border-right: 0; border-bottom: 1px solid var(--line); display: flex; flex-wrap: wrap; padding: 6px; }
+  nav h4 { display: none; }
+  nav a { border-left: 0; padding: 3px 8px; gap: 6px; }
+  main { padding: 12px 16px 32px; }
+  .tablewrap { overflow-x: auto; }
+  header span { display: none; }
+}
+</style>
+</head>
+<body>
+<header><div><b>smartdialer</b> <span>/ simulation runs</span></div>
+<span>from <code>python -m sim.run</code> · 100 agents · 20 simulated minutes · 1 decision per worker per second</span></header>
+<div class="wrap"><nav id="nav"></nav><main id="main"></main></div>
+
+<script>
+const RUNS = /*DATA*/null;
+const byName = Object.fromEntries(RUNS.map(r => [r.name, r]));
+const $ = s => document.querySelector(s);
+const pct = x => (100 * x).toFixed(1) + '%';
+const fmt = x => Number(x).toLocaleString('en-US');
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]));
+const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const VNAME = {A: 'approved', R: 'reduced', X: 'rejected', F: 'progressive'};
+
+// ---------- nav ----------
+function nav(active) {
+  const item = r => `<a href="#${r.name}" class="${r.name === active ? 'on' : ''}">
+    <span>${r.name}</span><span class="num ${r.s.abandoned ? 'bad' : ''}">${pct(r.s.util_busy)}</span></a>`;
+  $('#nav').innerHTML =
+    `<a href="#" class="${active ? '' : 'on'}"><span>All runs</span></a>` +
+    `<h4>Pacing</h4>` + RUNS.filter(r => !r.name.startsWith('F')).map(item).join('') +
+    `<h4>Failure drills</h4>` + RUNS.filter(r => r.name.startsWith('F')).map(item).join('');
+}
+
+// ---------- overview ----------
+function overview() {
+  const row = r => {
+    const s = r.s, v = s.safety_verdicts;
+    const twin = r.name.endsWith('-pred') && byName[r.name.replace('-pred', '-prog')];
+    const d = twin ? `<span class="delta">+${(100 * (s.util_busy - twin.s.util_busy)).toFixed(1)}</span>` : '';
+    return `<tr class="click" onclick="location.hash='${r.name}'">
+      <td>${r.name}</td><td class="sub">${s.mode.toLowerCase()}</td><td>${s.providers}</td><td class="n">${s.workers}</td>
+      <td class="n bar">${pct(s.util_busy)}${d}<i style="width:${60 * s.util_busy}px"></i></td>
+      <td class="n">${fmt(s.calls_initiated)}</td><td class="n">${fmt(s.connected)}</td>
+      <td class="n ${s.abandoned ? 'bad' : ''}">${s.abandoned}${s.abandoned ? ` (${(100 * s.abandon_rate).toFixed(2)}%)` : ''}</td>
+      <td class="n">${s.cancelled}</td><td class="n">${s.connects_per_agent_hour}</td>
+      <td class="n sub">${v.APPROVED || 0} / ${v.REDUCED || 0} / ${v.REJECTED || 0} / ${v.FALLBACK_PROGRESSIVE || 0}</td>
+      <td class="${s.ok ? '' : 'bad'}">${s.ok ? 'ok' : 'FAIL'}</td></tr>`;
+  };
+  const head = `<thead><tr><th>Run</th><th>Mode</th><th>Provider</th><th class="n">Workers</th><th class="n">Busy</th>
+    <th class="n">Dialed</th><th class="n">Connected</th><th class="n">Abandoned</th><th class="n">Cancelled</th>
+    <th class="n">Conn / agent·hr</th><th class="n">Safety appr / red / rej / prog</th><th>Invariants</th></tr></thead>`;
+  $('#main').innerHTML = `
+    <h1>All runs</h1>
+    <p class="sub">Each pacing scenario runs once progressive and once predictive. The failure drills run predictive with something broken on purpose. Busy = talking + wrap-up, as a share of logged-in agents, after a 2-minute warm-up.</p>
+    <h2>Pacing</h2><div class="tablewrap"><table>${head}<tbody>${RUNS.filter(r => !r.name.startsWith('F')).map(row).join('')}</tbody></table></div>
+    <h2>Failure drills</h2><div class="tablewrap"><table>${head}<tbody>${RUNS.filter(r => r.name.startsWith('F')).map(row).join('')}</tbody></table></div>
+    <p class="note">Green number next to a predictive run is the gain in busy time over its progressive twin. Click a row for the time series and every safety decision.</p>`;
+}
+
+// ---------- charts ----------
+let charts = [], cur = null;
+
+function ticks(max) {
+  const raw = max / 4, mag = Math.pow(10, Math.floor(Math.log10(raw || 1)));
+  const step = [1, 2, 2.5, 5, 10].map(m => m * mag).find(s => s >= raw);
+  const out = []; for (let v = 0; v <= max + 1e-9; v += step) out.push(+v.toFixed(6));
+  return out;
+}
+
+function drawChart(c) {
+  const el = c.el.querySelector('svg'), W = c.el.clientWidth, H = c.h;
+  const L = 34, R = 6, T = c.labels ? 14 : 6, B = 16, w = W - L - R, h = H - T - B;
+  const ts = cur.ts, n = ts.t.length, tmax = ts.t[n - 1] || 1;
+  const x = t => L + w * t / tmax, y = v => T + h - h * Math.min(v, c.ymax) / c.ymax;
+  let s = '';
+  for (const v of ticks(c.ymax)) s += `<line class="grid" x1="${L}" x2="${L + w}" y1="${y(v)}" y2="${y(v)}"/><text x="${L - 5}" y="${y(v) + 3.5}" text-anchor="end">${v}</text>`;
+  for (let t = 0; t <= tmax; t += 200) s += `<text x="${x(t)}" y="${H - 3}" text-anchor="middle">${t}s</text>`;
+  if (c.stack) {
+    let base = new Array(n).fill(0);
+    for (const k of c.series) {
+      const top = base.map((b, i) => b + ts[k.key][i]);
+      const up = top.map((v, i) => `${x(ts.t[i]).toFixed(1)},${y(v).toFixed(1)}`);
+      const dn = base.map((v, i) => `${x(ts.t[i]).toFixed(1)},${y(v).toFixed(1)}`).reverse();
+      s += `<polygon points="${up.join(' ')} ${dn.join(' ')}" fill="${css(k.color)}"/>`;
+      base = top;
+    }
+  } else {
+    for (const k of c.series) {
+      const pts = ts[k.key].map((v, i) => `${x(ts.t[i]).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
+      s += `<polyline points="${pts}" fill="none" stroke="${css(k.color)}" stroke-width="${k.w || 1.5}" ${k.dash ? 'stroke-dasharray="4 3"' : ''}/>`;
+    }
+  }
+  for (const [t, lbl] of cur.marks) {
+    s += `<line class="mark" x1="${x(t)}" x2="${x(t)}" y1="${T}" y2="${T + h}"/>`;
+    if (c.labels) s += `<text class="marklbl" x="${x(t) + 4}" y="${T - 3}">${esc(lbl)}</text>`;
+  }
+  s += `<line class="cursor" x1="-9" x2="-9" y1="${T}" y2="${T + h}" style="display:none"/>`;
+  el.setAttribute('viewBox', `0 0 ${W} ${H}`); el.setAttribute('height', H); el.innerHTML = s;
+  c.geom = {L, w, tmax, x};
+}
+
+function hover(i) {
+  for (const c of charts) {
+    const line = c.el.querySelector('.cursor'), r = c.el.querySelector('.r');
+    if (i == null) { line.style.display = 'none'; r.innerHTML = c.legend; continue; }
+    const X = c.geom.x(cur.ts.t[i]);
+    line.setAttribute('x1', X); line.setAttribute('x2', X); line.style.display = '';
+    r.textContent = `t=${cur.ts.t[i]}s  ` + c.series.map(k => `${k.label} ${c.fmt ? c.fmt(cur.ts[k.key][i]) : cur.ts[k.key][i]}`).join('  ');
+  }
+}
+
+function idxAt(c, ev) {
+  const rect = c.el.querySelector('svg').getBoundingClientRect();
+  const t = (ev.clientX - rect.left - c.geom.L) / c.geom.w * c.geom.tmax;
+  const ts = cur.ts.t; let best = 0;
+  for (let i = 0; i < ts.length; i++) if (Math.abs(ts[i] - t) < Math.abs(ts[best] - t)) best = i;
+  return best;
+}
+
+// ---------- run view ----------
+function runView(r) {
+  cur = r;
+  const s = r.s, v = s.safety_verdicts, ts = r.ts;
+  const sep = '<span class="sep">·</span>';
+  const maxStaffed = Math.max(...ts.staffed, 1);
+  const maxReq = Math.max(...ts.req, ...ts.appr, 1);
+  // scale to the typical approval, not the cold-start burst, or the steady state is a flat line
+  const p95 = [...ts.appr].sort((a, b) => a - b)[Math.floor(ts.appr.length * 0.95)] || 1;
+  const callCap = Math.max(Math.ceil(p95 * 2.5 / 10) * 10, 10);
+  $('#main').innerHTML = `
+    <h1>${r.name}</h1>
+    <div class="sub">${s.mode.toLowerCase()} · provider ${s.providers} · ${s.workers} worker${s.workers > 1 ? 's' : ''} · ${s.agents} agents · ${s.duration_s / 60} min</div>
+    <p>${esc(r.desc)}</p>
+    <p class="facts">busy <b>${pct(s.util_busy)}</b> talking <b>${pct(s.util_talk)}</b>${sep}dialed <b>${fmt(s.calls_initiated)}</b> answered <b>${fmt(s.answered)}</b> connected <b>${fmt(s.connected)}</b>${sep}abandoned <b class="${s.abandoned ? 'bad' : ''}">${s.abandoned}</b>${s.abandoned ? ` (${(100 * s.abandon_rate).toFixed(2)}%)` : ''} cancelled <b>${s.cancelled}</b>${sep}invariants <b class="${s.ok ? '' : 'bad'}">${s.ok ? 'ok' : 'FAIL'}</b></p>
+    <h2>Over time</h2>
+    <div class="chart" id="c0"><div class="hd"><span class="t">Agents</span><span class="r"></span></div><svg></svg></div>
+    <div class="chart" id="c1"><div class="hd"><span class="t">Calls per 5 s</span><span class="r"></span></div><svg></svg></div>
+    <div class="chart" id="c2"><div class="hd"><span class="t">Unbacked calls in flight, abandons</span><span class="r"></span></div><svg></svg></div>
+    ${maxReq > callCap ? `<p class="note">Calls chart is cut at ${callCap} per 5 s so the steady state is readable (peak was ${maxReq}). Hover for real values.</p>` : ''}
+    <h2>Safety controller decisions</h2>
+    <div class="logbar"><select id="filt">
+      <option value="all">all decisions</option>
+      <option value="event">shocks, cancels, breaker, circuit</option>
+      <option value="F">fell back to progressive</option>
+    </select><span id="logcount"></span><span>click a chart to jump to that time</span></div>
+    <div class="log" id="log"></div>`;
+  const key = (k, label, color, extra) => ({key: k, label, color, ...extra});
+  const defs = [
+    {h: 150, labels: true, stack: true, ymax: Math.ceil(maxStaffed / 10) * 10, series: [
+      key('talk', 'talking', '--talk'), key('wrap', 'wrap-up', '--wrap'),
+      key('dial', 'waiting on ring', '--dial'), key('free', 'idle', '--free')]},
+    {h: 120, ymax: callCap, series: [
+      key('req', 'pacer asked', '--asked', {dash: 1}), key('appr', 'safety approved', '--ok', {w: 1.8})]},
+    {h: 110, ymax: Math.max(...ts.ring, ...ts.aband, 5) * 1.1, series: [
+      key('ring', 'in flight', '--ok'), key('aband', 'abandoned (total)', '--bad', {w: 1.8})]},
+  ];
+  charts = defs.map((d, i) => {
+    const c = {...d, el: $('#c' + i)};
+    c.legend = c.series.map(k => `<span class="key" style="background:${css(k.color)}"></span>${k.label}`).join('');
+    drawChart(c);
+    c.el.addEventListener('mousemove', ev => hover(idxAt(c, ev)));
+    c.el.addEventListener('mouseleave', () => hover(null));
+    c.el.addEventListener('click', ev => jump(cur.ts.t[idxAt(c, ev)]));
+    return c;
+  });
+  hover(null);
+  $('#filt').onchange = renderLog;
+  renderLog();
+}
+
+function renderLog() {
+  const f = $('#filt').value;
+  const rows = cur.log.filter(d => f === 'all' ? true : f === 'F' ? d[4] === 'F'
+    : d[5] > 0 || /shock|TRIP|RESET|circuit|half-open|stale|old/.test(d[9]));
+  $('#logcount').textContent = `${fmt(rows.length)} of ${fmt(cur.log.length)}`;
+  const multi = cur.s.workers > 1;
+  $('#log').innerHTML = `<table><thead><tr><th class="n">t</th>${multi ? '<th>worker</th>' : ''}<th>verdict</th>
+    <th class="n">asked</th><th class="n">approved</th><th class="n">free</th><th class="n">unbacked</th><th class="n">p_hi</th><th class="n">cancel</th><th>reason</th></tr></thead><tbody>` +
+    rows.map(d => `<tr data-t="${d[0]}"><td class="n">${d[0]}</td>${multi ? `<td>${d[1]}</td>` : ''}<td class="v-${d[4]}">${VNAME[d[4]] || d[4]}</td>
+      <td class="n">${d[2]}</td><td class="n">${d[3]}</td><td class="n">${d[6] ?? ''}</td><td class="n">${d[7] ?? ''}</td>
+      <td class="n">${d[8] == null ? '' : d[8].toFixed(3)}</td><td class="n">${d[5] || ''}</td>
+      <td class="reason" title="${esc(d[9])}">${esc(d[9])}</td></tr>`).join('') + '</tbody></table>';
+}
+
+function jump(t) {
+  const box = $('#log'); let row = null;
+  for (const tr of box.querySelectorAll('tr[data-t]')) { if (+tr.dataset.t >= t) { row = tr; break; } }
+  if (!row) {
+    if ($('#filt').value === 'all') return;
+    $('#filt').value = 'all'; renderLog(); return jump(t);
+  }
+  box.querySelectorAll('.hit').forEach(e => e.classList.remove('hit'));
+  row.classList.add('hit');
+  box.scrollTop = row.offsetTop - box.querySelector('thead').offsetHeight - 40;
+  box.scrollIntoView({block: 'nearest', behavior: 'smooth'});
+}
+
+// ---------- routing ----------
+function route() {
+  const name = decodeURIComponent(location.hash.slice(1));
+  nav(byName[name] ? name : null);
+  byName[name] ? runView(byName[name]) : (cur = null, overview());
+  window.scrollTo(0, 0);
+}
+window.addEventListener('hashchange', route);
+window.addEventListener('resize', () => { if (cur) { charts.forEach(drawChart); hover(null); } });
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', route);
+route();
+</script>
+</body>
+</html>
