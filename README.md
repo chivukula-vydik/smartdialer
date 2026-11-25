@@ -42,6 +42,7 @@ python -m pytest -q                 # 54 tests, ~10 s
 python -m sim.run                   # all 16 scenarios, 2-5 min -> docs/RESULTS.md, docs/results/*, dashboard
 python -m sim.run --quick           # 10-minute scenarios
 python -m sim.run --only F3         # one scenario (prefix match); updates its row and the dashboard
+python -m sim.sweep                 # answer rate x talk time grid, ~2 min -> docs/SWEEP.md, docs/results/sweep.png
 python -m loadtest.load_test        # ~1-2 min -> docs/LOAD.md
 python -m sim.dashboard             # rebuild docs/dashboard.html from existing results
 ```
@@ -71,10 +72,12 @@ smartdialer/
   providers/      provider interface; mock providers A (fast, reliable) and B (slow, timeouts,
                   duplicates, reordering), outage switch
 sim/              virtual-clock simulator driving the real code; scenario runner;
+                  sweep.py (answer rate x talk time grid);
                   dashboard.py + dashboard.html (template) build docs/dashboard.html
 loadtest/         contention, decision-cost and event-throughput benchmarks
 tests/            state machines, races, events, crash recovery, safety, allocator, end-to-end
-docs/             ARCHITECTURE_DECISIONS.md, workflow.svg, RESULTS.md, LOAD.md, dashboard.html, results/
+docs/             ARCHITECTURE_DECISIONS.md, workflow.svg, RESULTS.md, SWEEP.md, LOAD.md, dashboard.html,
+                  results/
 ```
 
 ## Architecture
@@ -545,6 +548,33 @@ to 70% (safety allows 64% of the pacer's target): safety's recent-answer floor a
 check see the increase before the pacer's average does, which is the intended behaviour in the
 direction that causes abandons. While the rate falls to 10%, safety allows 95%.
 
+### Sweep: answer rate x talk time ([docs/SWEEP.md](docs/SWEEP.md))
+
+`sim/sweep.py` runs both modes on a grid of 4 answer rates (10, 30, 50, 70%) and 3 average talk
+times (60, 120, 240 s), 20 simulated minutes per run, same seed per cell. Cells show predictive
+busy minus progressive busy, in percentage points:
+
+| Talk \ Answer rate | 10% | 30% | 50% | 70% |
+|---|---|---|---|---|
+| 60 s | +33.2 (23% -> 57%) | +22.1 (51% -> 73%) | +9.6 (68% -> 78%) | +3.3 (79% -> 82%) |
+| 120 s | +34.4 (38% -> 72%) | +14.2 (69% -> 83%) | +6.8 (80% -> 86%) | +1.4 (87% -> 89%) |
+| 240 s | +26.8 (56% -> 83%) | +8.0 (82% -> 90%) | +2.1 (90% -> 92%) | +0.8 (93% -> 94%) |
+
+![sweep](docs/results/sweep.png)
+
+* **Zero abandons in all 24 runs**; invariants hold in every run.
+* **Cancellations without a real shock** (0 to 99 per predictive run, highest at 10-30%
+  answer rates) come from false alarms in the answer-rate shift test; see Known limitations.
+* **The gain falls as answer rate and talk time rise.** Progressive idle time per call is the
+  ring and no-answer time between calls; a high answer rate shortens it, and long calls make it
+  a smaller share of each agent's cycle. At 70% with 240 s calls progressive is already 93% busy
+  and predictive has under 1 point to recover.
+* **At a 10% answer rate the binding limit is the 4x dial-ratio ceiling, not the abandon
+  bound.** At 60 s talk the pacer targets 180 calls in flight for 45 free agents (4 x 45), safety
+  approves every request, and the expected answers among those calls (~15) are well below the
+  free agents. Predictive stops at 57% busy in that cell. Raising the ceiling would recover
+  more of it at the cost of a larger blast radius if the answer-rate estimate is wrong.
+
 ### Fault-injection runs (predictive)
 
 | Run | Busy | Connected | Abandoned | Behaviour |
@@ -635,7 +665,15 @@ trigger-maintained counters, and one overflow model shared by pacer and safety.
 
 * **Conservative bound.** ~15% of agents idle at a 20% answer rate (82.8% busy against ~90% for
   a tuned predictive dialer), by design.
+* **Fixed dial-ratio ceiling.** 4x caps predictive at low answer rates (57% busy at 10% /
+  60 s, see the sweep) even when the abandon bound has room.
 * **Single write lock.** SQLite serialises all writes; the first constraint as agents grow.
+* **Shift detection fires on noise.** The test (short-window Wilson lower bound above the
+  long-window upper bound, z = 1.645) runs every decision, so over 1,200 decisions at a fixed
+  answer rate it occasionally fires. Each false alarm cancels unbacked calls: 61 in one
+  decision at 10% / 60 s in the sweep, 20 over scenario A. No abandons result; the cost is
+  dropped calls. Requiring the shift to persist over several decisions, or a sequential test
+  (CUSUM), would cut false alarms at the cost of a slower reaction to a real jump (F6).
 * **Ring-and-drop on shocks.** Capacity-shock cancellation hangs up ringing calls; minimum
   ring-time rules would restrict it to calls not yet ringing.
 * **Webhook latency.** Slow ANSWERED events consume the 2 s grace (78 late connects with
@@ -647,13 +685,15 @@ trigger-maintained counters, and one overflow model shared by pacer and safety.
 1. **Time-aware safety bound.** Answers spread over the ring-time distribution and agents
    freeing at a measurable rate; run in shadow mode next to the static bound and promoted only if
    its realised abandon rate stays under target, behind the same breaker and permit ledger.
-2. **Permit batching.** One permit row per decision carrying a count, instead of one row per
+2. **Shift test with persistence.** Require the answer-rate shift to hold over several
+   consecutive decisions (or a CUSUM test) before cancelling, measured against F6 reaction time.
+3. **Permit batching.** One permit row per decision carrying a count, instead of one row per
    call; this is most of the remaining decision cost at 10,000 agents.
-3. **Postgres** past ~1,000 agents, with per-pool counters and one decider per pool.
-4. **Plivo adapter** on the existing provider interface.
-5. **Compliance:** calling-hour windows (8 am to 7 pm in India), DNC lists, consent,
+4. **Postgres** past ~1,000 agents, with per-pool counters and one decider per pool.
+5. **Plivo adapter** on the existing provider interface.
+6. **Compliance:** calling-hour windows (8 am to 7 pm in India), DNC lists, consent,
    per-borrower contact caps, a retention policy for the decision log.
-6. **Borrower-level intelligence**, below.
+7. **Borrower-level intelligence**, below.
 
 ### Borrower-level intelligence (not built)
 
