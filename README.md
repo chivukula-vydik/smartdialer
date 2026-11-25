@@ -4,6 +4,8 @@ An outbound collections dialer with progressive and predictive pacing. The predi
 algorithm never places a call directly: every call needs a single-use permit from an
 independent Safety Controller, which allocates from one budget shared by all workers.
 
+**Final question** (predictive utilisation with progressive safety): see [FINAL_ANSWER.md](FINAL_ANSWER.md).
+
 ![SmartDialer workflow](docs/workflow.svg)
 
 **Contents:** [Overview](#overview) · [Quick start](#quick-start) · [Repository layout](#repository-layout) · [Architecture](#architecture) · [State machines](#state-machines) · [Concurrency model](#concurrency-model) · [Call flows](#call-flows) · [Providers and events](#providers-and-events) · [Failure handling](#failure-handling-and-recovery) · [Pacing and safety](#pacing-and-safety) · [Simulation](#simulation) · [Performance and scaling](#performance-and-scaling) · [Architecture decisions](#architecture-decisions) · [Limitations](#known-limitations) · [Roadmap](#roadmap)
@@ -77,6 +79,7 @@ sim/              virtual-clock simulator driving the real code; scenario runner
                   dashboard.py + dashboard.html (template) build docs/dashboard.html
 loadtest/         contention, decision-cost and event-throughput benchmarks
 tests/            state machines, races, events, crash recovery, safety, allocator, end-to-end
+FINAL_ANSWER.md   short answer to the final question
 docs/             ARCHITECTURE_DECISIONS.md, workflow.svg, RESULTS.md, SWEEP.md, LOAD.md, dashboard.html,
                   results/
 ```
