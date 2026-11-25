@@ -12,22 +12,27 @@ from .base import ProviderError, ProviderEvent, ProviderTimeout, TelecomProvider
 
 
 class Population:
-    """Borrower behaviour. answer_rate and talk_time may be functions of time (scenario D)."""
+    """Borrower behaviour. answer_rate and talk_time may be functions of time (scenario D).
+    `profiles` optionally maps a phone number to its own (answer_rate, talk_time_s), for mixed
+    borrower segments; unmapped numbers use the campaign-wide values."""
 
     def __init__(self, answer_rate, talk_time_s, ring_to_answer=(3.0, 12.0),
-                 no_answer_after_s=25.0, busy_share=0.15, patience=(3.0, 8.0)):
+                 no_answer_after_s=25.0, busy_share=0.15, patience=(3.0, 8.0), profiles=None):
         self._ar = answer_rate if callable(answer_rate) else (lambda t, v=answer_rate: v)
         self._tt = talk_time_s if callable(talk_time_s) else (lambda t, v=talk_time_s: v)
         self.ring_to_answer = ring_to_answer
         self.no_answer_after_s = no_answer_after_s
         self.busy_share = busy_share
         self.patience = patience
+        self.profiles = profiles or {}
 
-    def answer_rate(self, t):
-        return self._ar(t)
+    def answer_rate(self, t, phone=None):
+        prof = self.profiles.get(phone)
+        return prof[0] if prof else self._ar(t)
 
-    def talk_time(self, t, rng):
-        mean = self._tt(t)
+    def talk_time(self, t, rng, phone=None):
+        prof = self.profiles.get(phone)
+        mean = prof[1] if prof else self._tt(t)
         return max(10.0, rng.gammavariate(4.0, mean / 4.0))
 
 
@@ -79,12 +84,12 @@ class MockProvider(TelecomProvider):
         if self.outage or r < self.cfg.timeout_rate:
             self.stats["timeouts"] += 1
             if self.rng.random() < self.cfg.placed_on_timeout:
-                self._place(call_id, now)
+                self._place(call_id, now, phone)
             raise ProviderTimeout(f"{self.name}: dial timeout")
         if r < self.cfg.timeout_rate + self.cfg.reject_rate:
             self.stats["rejects"] += 1
             raise ProviderError(f"{self.name}: dial rejected")
-        return self._place(call_id, now)
+        return self._place(call_id, now, phone)
 
     def hangup(self, call_id, now, reason="hangup"):
         if self.outage:
@@ -107,7 +112,7 @@ class MockProvider(TelecomProvider):
             return
         c["status"] = "bridged"
         c["agent"] = agent_id
-        self._at(now + self.pop.talk_time(now, self.rng), "talk_end", call_id)
+        self._at(now + self.pop.talk_time(now, self.rng, c.get("phone")), "talk_end", call_id)
 
     def get_status(self, call_id, now):
         if self.outage:
@@ -119,12 +124,12 @@ class MockProvider(TelecomProvider):
                 "bridged": "CONNECTED", "ended": c.get("final", "COMPLETED")}[c["status"]]
 
     # ---- network simulation ----
-    def _place(self, call_id, now):
+    def _place(self, call_id, now, phone=None):
         pcid = f"{self.name}-pc-{next(self._seq)}"
-        self.calls[call_id] = {"status": "pending", "pcid": pcid, "bridged": False}
+        self.calls[call_id] = {"status": "pending", "pcid": pcid, "bridged": False, "phone": phone}
         t_ring = now + self.rng.uniform(*self.cfg.setup_s)
         self._at(t_ring, "ring", call_id)
-        p = self.pop.answer_rate(now)
+        p = self.pop.answer_rate(now, phone)
         u = self.rng.random()
         if u < p:
             self._at(t_ring + self.rng.uniform(*self.pop.ring_to_answer), "answer", call_id)

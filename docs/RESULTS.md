@@ -17,6 +17,15 @@ Output of `python -m sim.run`. 100 agents, provider A unless stated, 1 pacing de
 
 ![comparison](results/comparison.png)
 
+## Mixed borrower segments (predictive mode)
+
+Segments: 30% answer 60% (150 s talk), 50% answer 25% (120 s), 20% answer 5% (60 s). M1: segments shuffled through the queue. M2: queue in alternating runs of 100 borrowers from one segment, so the answer rate of each dialing burst jumps between 5% and 60%.
+
+| Run | Busy | Talk | Initiated | Connected | Abandoned | Cancelled | Connects/agent-hr | Safety A/Red/Rej/FB | Invariants |
+|---|---|---|---|---|---|---|---|---|---|
+| M1-mixed-shuffled | 85.3% | 79.3% | 2368 | 741 | 0 (0.00%) | 14 | 22.23 | 166/591/413/31 | OK |
+| M2-mixed-blocks | 83.0% | 77.2% | 2627 | 716 | 2 (0.28%) | 123 | 21.48 | 157/623/390/31 | OK |
+
 ## Failure and stress runs (predictive mode)
 
 | Run | Busy | Talk | Initiated | Connected | Abandoned | Cancelled | Connects/agent-hr | Safety A/Red/Rej/FB | Invariants |
@@ -29,13 +38,14 @@ Output of `python -m sim.run`. 100 agents, provider A unless stated, 1 pacing de
 | F5-three-workers | 83.4% | 76.8% | 2676 | 786 | 0 (0.00%) | 21 | 23.58 | 559/621/2330/93 | OK |
 | F6-rate-jump | 84.9% | 78.2% | 2785 | 792 | 12 (1.49%) | 59 | 23.76 | 278/4/20/899 | OK |
 | F7-pacing-bug-5x | 83.2% | 74.7% | 2053 | 1028 | 0 (0.00%) | 6 | 30.84 | 72/723/375/31 | OK |
+| F8-window-close | 44.1% | 40.4% | 1347 | 414 | 0 (0.00%) | 15 | 12.42 | 132/284/754/31 | OK |
 
 ### F1-providerB
 
 - events: {"applied": 4864, "duplicate": 42, "stale": 31, "after_terminal": 76}, exact duplicates dropped at inbox: 794
 - allocator: {"placed": 1959, "provider_error": 71, "provider_timeout": 107}
 - housekeeping: {"recovered": 29, "reconciled_failed": 51, "stale_closed": 5, "pruned": 1099}
-- circuit trips: {"B": 0}, late connects (>2 s): 78
+- circuit trips: {"B": 0}, late connects (>2 s): 78, dials outside calling hours: 0
 - log: []
 
 ![F1-providerB](results/F1-providerB.png)
@@ -45,7 +55,7 @@ Output of `python -m sim.run`. 100 agents, provider A unless stated, 1 pacing de
 - events: {"applied": 5736, "after_terminal": 38}, exact duplicates dropped at inbox: 0
 - allocator: {"placed": 2565, "provider_error": 13, "provider_timeout": 14, "no_provider": 8}
 - housekeeping: {"reconciled_failed": 12, "pruned": 1353}
-- circuit trips: {"A": 9}, late connects (>2 s): 3
+- circuit trips: {"A": 9}, late connects (>2 s): 3, dials outside calling hours: 0
 - log: [{"t": 300.0, "fault": "outage", "arg": "('A', True)"}, {"t": 390.0, "fault": "outage", "arg": "('A', False)"}]
 
 ![F2-outage](results/F2-outage.png)
@@ -55,7 +65,7 @@ Output of `python -m sim.run`. 100 agents, provider A unless stated, 1 pacing de
 - events: {"applied": 5961, "after_terminal": 35, "duplicate": 1}, exact duplicates dropped at inbox: 1
 - allocator: {"placed": 2676, "provider_error": 20, "provider_timeout": 8}
 - housekeeping: {"reconciled_failed": 7, "pruned": 1329}
-- circuit trips: {"A": 2, "B": 0}, late connects (>2 s): 4
+- circuit trips: {"A": 2, "B": 0}, late connects (>2 s): 4, dials outside calling hours: 0
 - log: [{"t": 300.0, "fault": "outage", "arg": "('A', True)"}, {"t": 390.0, "fault": "outage", "arg": "('A', False)"}]
 
 ![F2b-outage-failover](results/F2b-outage-failover.png)
@@ -65,7 +75,7 @@ Output of `python -m sim.run`. 100 agents, provider A unless stated, 1 pacing de
 - events: {"applied": 6581, "after_terminal": 58}, exact duplicates dropped at inbox: 0
 - allocator: {"placed": 3079, "provider_error": 13, "provider_timeout": 6}
 - housekeeping: {"reconciled_failed": 3, "pruned": 1956}
-- circuit trips: {"A": 0}, late connects (>2 s): 0
+- circuit trips: {"A": 0}, late connects (>2 s): 0, dials outside calling hours: 0
 - log: [{"t": 400.0, "fault": "agents_drop", "arg": "40"}]
 
 ![F3-agent-drop](results/F3-agent-drop.png)
@@ -75,8 +85,8 @@ Output of `python -m sim.run`. 100 agents, provider A unless stated, 1 pacing de
 - events: {"applied": 5826, "after_terminal": 30}, exact duplicates dropped at inbox: 0
 - allocator: {"placed": 2576, "provider_error": 14, "provider_timeout": 4}
 - housekeeping: {"reconciled_failed": 3, "pruned": 1228}
-- circuit trips: {"A": 0}, late connects (>2 s): 4
-- log: [{"t": 200.0, "fault": "crash_worker", "arg": "('w1', 'after_dial')"}, {"t": 200.0, "crash": "w1 crashed at after_dial (07039ae0)"}, {"t": 300.0, "fault": "crash_worker", "arg": "('w2', 'after_reserve')"}, {"t": 301.0, "crash": "w2 crashed at after_reserve (e0217852)"}, {"t": 320.0, "fault": "restart_worker", "arg": "w1"}]
+- circuit trips: {"A": 0}, late connects (>2 s): 4, dials outside calling hours: 0
+- log: [{"t": 200.0, "fault": "crash_worker", "arg": "('w1', 'after_dial')"}, {"t": 200.0, "crash": "w1 crashed at after_dial (2eaaa0c6)"}, {"t": 300.0, "fault": "crash_worker", "arg": "('w2', 'after_reserve')"}, {"t": 301.0, "crash": "w2 crashed at after_reserve (e31562b7)"}, {"t": 320.0, "fault": "restart_worker", "arg": "w1"}]
 
 ![F4-worker-crash](results/F4-worker-crash.png)
 
@@ -85,7 +95,7 @@ Output of `python -m sim.run`. 100 agents, provider A unless stated, 1 pacing de
 - events: {"applied": 5983, "after_terminal": 21}, exact duplicates dropped at inbox: 0
 - allocator: {"placed": 2676, "provider_error": 11, "provider_timeout": 4}
 - housekeeping: {"reconciled_failed": 3, "pruned": 1303}
-- circuit trips: {"A": 0}, late connects (>2 s): 0
+- circuit trips: {"A": 0}, late connects (>2 s): 0, dials outside calling hours: 0
 - log: []
 
 ![F5-three-workers](results/F5-three-workers.png)
@@ -95,7 +105,7 @@ Output of `python -m sim.run`. 100 agents, provider A unless stated, 1 pacing de
 - events: {"applied": 6207, "after_terminal": 71}, exact duplicates dropped at inbox: 0
 - allocator: {"placed": 2785, "provider_error": 11, "provider_timeout": 4}
 - housekeeping: {"abandoned": 12, "reconciled_failed": 2, "pruned": 2220}
-- circuit trips: {"A": 0}, late connects (>2 s): 0
+- circuit trips: {"A": 0}, late connects (>2 s): 0, dials outside calling hours: 0
 - log: []
 
 ![F6-rate-jump](results/F6-rate-jump.png)
@@ -105,10 +115,20 @@ Output of `python -m sim.run`. 100 agents, provider A unless stated, 1 pacing de
 - events: {"applied": 5034, "after_terminal": 7}, exact duplicates dropped at inbox: 0
 - allocator: {"placed": 2053, "provider_error": 4, "provider_timeout": 6}
 - housekeeping: {"reconciled_failed": 1, "stale_closed": 1, "pruned": 1050}
-- circuit trips: {"A": 0}, late connects (>2 s): 0
+- circuit trips: {"A": 0}, late connects (>2 s): 0, dials outside calling hours: 0
 - log: []
 
 ![F7-pacing-bug-5x](results/F7-pacing-bug-5x.png)
+
+### F8-window-close
+
+- events: {"applied": 3095, "after_terminal": 15}, exact duplicates dropped at inbox: 0
+- allocator: {"placed": 1347, "provider_error": 9, "provider_timeout": 3}
+- housekeeping: {"reconciled_failed": 1, "pruned": 1359}
+- circuit trips: {"A": 0}, late connects (>2 s): 0, dials outside calling hours: 0
+- log: [{"t": 600.0, "fault": "marker", "arg": "19:00"}]
+
+![F8-window-close](results/F8-window-close.png)
 
 ## Agent drop: reaction trace (t = 398..404)
 
@@ -173,6 +193,7 @@ Safety controller (its own numbers, read inside its transaction):
  "shift": false,
  "p_floor_recent": 0.3529,
  "eps": 0.015,
+ "calling_window_left_s": 31999.0,
  "provider_allowance": "unlimited",
  "cap": 20,
  "max_inflight_stat": 30,

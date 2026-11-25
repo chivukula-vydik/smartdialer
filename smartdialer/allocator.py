@@ -14,10 +14,11 @@ class WorkerCrash(Exception):
 
 class CallAllocator:
     def __init__(self, db, router, verifier: PermitVerifier, worker_id, cfg: DialerConfig,
-                 crash_hook=None):
+                 crash_hook=None, new_id=None):
         self.db = db
         self.router = router
         self.verifier = verifier
+        self.new_id = new_id or (lambda: uuid.uuid4().hex)   # injectable for reproducible simulation
         self.worker_id = worker_id
         self.cfg = cfg
         self.crash = crash_hook or (lambda point, **kw: None)
@@ -33,7 +34,7 @@ class CallAllocator:
         if not self.verifier.valid(p, now):
             self.stats["rejected_permit"] += 1
             return None
-        call_id = uuid.uuid4().hex
+        call_id = self.new_id()
         lease = now + self.cfg.dial_lease_s
         progressive = p.mode == Mode.PROGRESSIVE
         with self.db.tx() as c:

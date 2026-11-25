@@ -40,3 +40,5 @@ class SafetyConfig:
     max_request_age_s: float = 2.0
     permit_ttl_s: float = 3.0
     abandon_min_denominator: int = 30
+    calling_window: tuple = (8 * 3600, 19 * 3600)  # local seconds of day: no dials outside 08:00-19:00
+    clock_offset_s: float = 19800.0     # added to `now` to get local time (epoch clock in IST = +5:30)

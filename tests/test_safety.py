@@ -11,7 +11,7 @@ from smartdialer.models import Mode
 from smartdialer.pacing import PacingRequest
 from smartdialer.safety import (FALLBACK, REJECTED, Permit, PermitVerifier, SafetyController,
                                 expected_overflow, max_safe_inflight, wilson_upper)
-from tests.conftest import SECRET
+from tests.conftest import SECRET, TEST_SAFETY
 
 
 def seed_outcomes(db, n, answer_rate, now, connected_share=1.0, abandoned=0):
@@ -39,7 +39,7 @@ def fresh(db, now):
 
 
 def ctl(db, router=None, **over):
-    return SafetyController(db, dataclasses.replace(SafetyConfig(), **over), SECRET, router)
+    return SafetyController(db, dataclasses.replace(TEST_SAFETY, **over), SECRET, router)
 
 
 def test_stats_helpers():
@@ -189,3 +189,49 @@ def test_pacer_and_safety_share_the_model_pacer_never_below_safety(stack):
         assert req.calls >= d.approved > 0
         assert d.numbers["max_inflight_stat"] <= req.rationale["target_in_flight"]
         assert d.numbers["max_inflight_stat"] >= 0.6 * req.rationale["target_in_flight"]
+
+
+def test_pacer_plans_within_the_ceiling_safety_publishes(stack):
+    """The dial-ratio ceiling is defined once, in SafetyConfig; the worker publishes it to the
+    pacer through the snapshot, so changing the config moves both."""
+    from smartdialer.config import DialerConfig
+    from smartdialer.pacing import PredictivePacer
+    from smartdialer.worker import DialerWorker
+    repo.add_agents(stack.db, [f"x{i}" for i in range(37)], 0.0)      # 40 agents
+    repo.add_borrowers(stack.db, [(f"bb{i}", "x", 0) for i in range(2000)])
+    seed_outcomes(stack.db, 400, 0.05, 100)       # low answer rate: the ceiling binds
+    fresh(stack.db, 100)
+    for ratio in (2.0, 3.0):
+        scfg = dataclasses.replace(TEST_SAFETY, max_dial_ratio=ratio)
+        w = DialerWorker(f"w{ratio}", stack.db, stack.router, PredictivePacer(), SECRET,
+                         DialerConfig(), scfg)
+        req = w.pacer.request(__import__("smartdialer.ledger", fromlist=["x"]).read_snapshot(
+            stack.db.conn(), 100, max_dial_ratio=w.scfg.max_dial_ratio))
+        cap = req.rationale["capacity"]
+        assert cap > 0 and req.rationale["target_in_flight"] == int(ratio * cap)
+        w.pace(100)
+        assert w.last_request.rationale["target_in_flight"] == int(ratio * cap)
+
+
+def test_no_permits_outside_calling_hours(stack):
+    """08:00-19:00 local only. clock_offset_s=0 makes `now` the local seconds since midnight."""
+    H = 3600
+    c = ctl(stack.db, clock_offset_s=0.0)
+    for t, open_ in ((8 * H - 1, False), (8 * H, True), (19 * H - 1, True), (19 * H, False),
+                     (23 * H, False), (24 * H + 8 * H + 60, True)):
+        fresh(stack.db, t)
+        d = c.evaluate(PacingRequest(Mode.PROGRESSIVE, 1, t), "w", t)
+        assert (d.approved == 1) == open_, t
+        if not open_:
+            assert d.verdict == REJECTED and "outside calling hours" in d.reasons
+
+
+def test_permit_cannot_outlive_calling_window(stack):
+    t = 19 * 3600 - 1.0                      # 18:59:59 local
+    fresh(stack.db, t)
+    d = ctl(stack.db, clock_offset_s=0.0).evaluate(PacingRequest(Mode.PROGRESSIVE, 1, t), "w", t)
+    p = d.permits[0]
+    assert p.expires_at == 19 * 3600         # capped at closing, not now + 3 s
+    assert PermitVerifier(SECRET).valid(p, t + 0.5)
+    assert stack.worker.allocator.place(p, 19 * 3600 + 0.5) is None
+    assert stack.calls() == []

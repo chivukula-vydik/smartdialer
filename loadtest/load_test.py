@@ -131,7 +131,7 @@ def build_scaled(agents, history):
 
 def decision_cost(agents, history, n=30):
     db, path, now = build_scaled(agents, history)
-    ctl = SafetyController(db, SafetyConfig(), b"k", None)
+    ctl = SafetyController(db, SafetyConfig(clock_offset_s=10 * 3600), b"k", None)   # t=0 is 10:00
     lat, approved, snap = [], [], []
     from smartdialer.ledger import read_snapshot
     for i in range(n):

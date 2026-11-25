@@ -43,7 +43,7 @@ class PredictivePacer:
     mode = Mode.PREDICTIVE
 
     def __init__(self, prior_p=0.3, prior_weight=10, aggressiveness=1.0, wrap_s=10.0,
-                 default_ring_s=12.0, default_talk_s=120.0, target_abandon=0.03, max_ratio=4.0):
+                 default_ring_s=12.0, default_talk_s=120.0, target_abandon=0.03):
         self.prior_p = prior_p
         self.prior_w = prior_weight
         self.aggr = aggressiveness
@@ -51,7 +51,6 @@ class PredictivePacer:
         self.default_ring_s = default_ring_s
         self.default_talk_s = default_talk_s
         self.target_abandon = target_abandon
-        self.max_ratio = max_ratio
 
     def answer_rate(self, s: Snapshot) -> float:
         # Short window weighted 2x so a regime change shows up within ~40 outcomes.
@@ -69,7 +68,7 @@ class PredictivePacer:
         capacity = max(0, s.available - s.stale_heartbeats - s.answered_waiting
                        - s.open_permits_progressive)
         in_flight = s.unbacked_in_flight + s.open_permits_predictive
-        hard = max(in_flight, math.floor(self.max_ratio * capacity))
+        hard = max(in_flight, math.floor(s.max_dial_ratio * capacity))   # safety's ceiling
         target = max_safe_inflight(p, capacity, self.target_abandon, hard)
         room = target - in_flight
         n = max(0, math.floor(self.aggr * room))

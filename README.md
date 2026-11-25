@@ -15,6 +15,7 @@ independent Safety Controller, which allocates from one budget shared by all wor
 | One agent, one live call; one borrower, one live call | Conditional (compare-and-set) updates inside write transactions, backed by partial unique indexes in the database |
 | Pacing cannot bypass safety | The pacer only returns a number; dialing requires an HMAC-signed, single-use, 3-second permit minted by the Safety Controller |
 | Bounded abandon rate | Deterministic floor (progressive), pessimistic statistical bound for predictive, rolling abandon-rate breaker that forces progressive |
+| Calling hours | Safety rejects every request outside 08:00-19:00 local, and no permit outlives the window |
 | Correct under hostile providers | Webhook inbox with dedupe, monotonic state machine, timeouts treated as "unknown" and reconciled with the provider |
 | Crash recovery without coordination | Work is owned through leases; any worker recovers expired work, and compare-and-set lets exactly one succeed |
 
@@ -27,7 +28,7 @@ Simulated results, 100 agents, 20 minutes ([docs/RESULTS.md](docs/RESULTS.md)):
 | 70% / 180 s | 90.4% | 91.8% | 0% |
 | changing | 64.5% | 80.5% | 0% |
 
-No double allocation or invariant violation in any scenario run, the 54 tests, or ~100k
+No double allocation or invariant violation in any scenario run, the 60 tests, or ~100k
 contended allocations in the load test.
 
 ## Quick start
@@ -38,11 +39,11 @@ Python 3.10+. The dialer uses the standard library only; pytest for tests, matpl
 python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 
-python -m pytest -q                 # 54 tests, ~10 s
-python -m sim.run                   # all 16 scenarios, 2-5 min -> docs/RESULTS.md, docs/results/*, dashboard
+python -m pytest -q                 # 60 tests, ~10 s
+python -m sim.run                   # all 19 scenarios, 2-5 min -> docs/RESULTS.md, docs/results/*, dashboard
 python -m sim.run --quick           # 10-minute scenarios
 python -m sim.run --only F3         # one scenario (prefix match); updates its row and the dashboard
-python -m sim.sweep                 # answer rate x talk time grid, ~2 min -> docs/SWEEP.md, docs/results/sweep.png
+python -m sim.sweep                 # answer-rate x talk-time grid + segment runs, ~4 min -> docs/SWEEP.md
 python -m loadtest.load_test        # ~1-2 min -> docs/LOAD.md
 python -m sim.dashboard             # rebuild docs/dashboard.html from existing results
 ```
@@ -72,7 +73,7 @@ smartdialer/
   providers/      provider interface; mock providers A (fast, reliable) and B (slow, timeouts,
                   duplicates, reordering), outage switch
 sim/              virtual-clock simulator driving the real code; scenario runner;
-                  sweep.py (answer rate x talk time grid);
+                  sweep.py (answer-rate x talk-time grid, clustered borrower segments);
                   dashboard.py + dashboard.html (template) build docs/dashboard.html
 loadtest/         contention, decision-cost and event-throughput benchmarks
 tests/            state machines, races, events, crash recovery, safety, allocator, end-to-end
@@ -415,7 +416,7 @@ Predictive dialing runs as a bounded overdraft on top of progressive:
 | Answer rate | Expected value (Beta prior + window) | Upper confidence bound |
 | Abandon target | 3% (regulatory limit) | 1.5%, shrinking toward 0 as the rolling rate rises |
 | Agents counted | Free now, not promised to a call | Same, plus fresh heartbeat required |
-| Dial-ratio ceiling | 4 x free agents | Same |
+| Dial-ratio ceiling | Read from the snapshot (`max_dial_ratio`, published from `SafetyConfig`) | `SafetyConfig.max_dial_ratio` = 4 x free agents |
 | Output | A number + rationale | Signed single-use permits + verdict + reasons |
 
 Because both sides use the same model on the same agents, the pacer always asks for at least
@@ -429,7 +430,7 @@ p          = (prior_p*w + answers_long + answers_short) / (w + n_long + n_short)
              raised to the answers already seen among calls dialed in the last 30 s
 C          = AVAILABLE - stale heartbeats - answered_waiting - open progressive permits
 in_flight  = unbacked calls ringing + unconsumed predictive permits
-target m   = largest m <= 4*C with E[(X - C)+] <= 3% * E[min(X, C)],  X ~ Binomial(m, p)
+target m   = largest m <= max_dial_ratio*C with E[(X - C)+] <= 3% * E[min(X, C)],  X ~ Binomial(m, p)
 request    = floor( aggressiveness * (m - in_flight) )
 ```
 
@@ -445,6 +446,7 @@ Evaluated in order inside one `BEGIN IMMEDIATE` transaction:
 |---|---|---|---|
 | 1 | Rolling abandon rate (15 min) >= 2.5% (cap 3%) | deterministic | Force PROGRESSIVE for all workers until <= 1.0% and >= 60 s cooldown |
 | 2 | Request based on a snapshot older than 2 s | deterministic | REJECT |
+| 2b | Outside the calling window (08:00-19:00 local, `SafetyConfig.calling_window`) | deterministic | REJECT; permits issued near closing expire at closing |
 | 3 | No provider breaker admits calls | deterministic | REJECT; half-open caps at probe count |
 | 4 | Fewer than 40 resolved outcomes | deterministic | FALLBACK to progressive |
 | 5 | Agent heartbeat stale | deterministic | Not counted as free |
@@ -477,7 +479,8 @@ approve the largest m with   E[abandon] <= eps * E[connect]
 
 1. The pacer is constructed without a database handle, router, allocator or `SafetyConfig`.
 2. `provider.dial()` is called only in `CallAllocator._dial`, reached only through `place(permit)`.
-3. `place()` requires a permit with a valid HMAC, unexpired (3 s), and atomically consumed in
+3. `place()` requires a permit with a valid HMAC, unexpired (3 s, or the end of the calling
+   window if sooner), and atomically consumed in
    the transaction that reserves agent and borrower. Reused, forged, mode-tampered and expired
    permits are refused.
 4. `SafetyConfig` is a frozen dataclass set at start-up.
@@ -512,9 +515,11 @@ Pacer target m = 35, so it requests 35 - 25 = **10**. Safety's bound is m = 30, 
 
 The simulator (`sim/simulator.py`) drives the real worker, safety, allocator, event and recovery
 code with the mock providers on a virtual clock; 20 simulated minutes run in ~15 s and are
-reproducible from a seed. The mock borrower population models answer rate (fixed or changing
-over time), 3-12 s ring-to-answer, 25 s no-answer timeout, 15% busy share among non-answers,
-3-8 s patience on silence, and gamma-distributed talk time.
+reproducible from a seed (call, permit and decision ids come from a seeded generator, so ties on
+equal timestamps break the same way every run; production uses `uuid4`). Simulated time 0 is
+10:00 local. The mock borrower population models answer rate (fixed, changing over time, or per
+borrower segment), 3-12 s ring-to-answer, 25 s no-answer timeout, 15% busy share among
+non-answers, 3-8 s patience on silence, and gamma-distributed talk time.
 
 ### Scenarios (100 agents, provider A, 20 minutes)
 
@@ -562,7 +567,8 @@ busy minus progressive busy, in percentage points:
 
 ![sweep](docs/results/sweep.png)
 
-* **Zero abandons in all 24 runs**; invariants hold in every run.
+* **Zero abandons in all 24 runs** (one uniform borrower population; mixed populations below);
+  invariants hold in every run.
 * **Cancellations without a real shock** (0 to 99 per predictive run, highest at 10-30%
   answer rates) come from false alarms in the answer-rate shift test; see Known limitations.
 * **The gain falls as answer rate and talk time rise.** Progressive idle time per call is the
@@ -574,6 +580,28 @@ busy minus progressive busy, in percentage points:
   approves every request, and the expected answers among those calls (~15) are well below the
   free agents. Predictive stops at 57% busy in that cell. Raising the ceiling would recover
   more of it at the cost of a larger blast radius if the answer-rate estimate is wrong.
+
+### Mixed borrower segments ([docs/SWEEP.md](docs/SWEEP.md))
+
+The safety bound assumes each ringing call answers independently at one campaign-wide rate.
+These runs break that assumption. Segments: 30% of borrowers answer 60% (150 s talk), 50% answer
+25% (120 s), 20% answer 5% (60 s); campaign average ~31%.
+
+| Queue order | Runs | Abandon rate |
+|---|---|---|
+| Segments shuffled through the queue (M1) | 2 seeds | 0% |
+| Alternating runs of 10, 25 or 200 borrowers per segment | 2 seeds each | 0% to 0.84% |
+| Alternating runs of 100 borrowers per segment (M2) | 11 seeds | median 0.82%, max 4.17%; 1 run above 3% |
+
+A shuffled mix behaves like one population and stays at zero. Clustered queues do not: every
+switch from a 5% run to a 60% run is a sudden answer-rate jump (as in F6), and the estimate,
+built from calls already resolved, is always late. In the 4.17% run the shift test held the
+estimate at ~0.5 while a 60% run was being dialed, released it to 0.19 one second after the
+short window filled with 5% outcomes, and safety approved 85 calls in one decision into the next
+60% run: 30 abandons in 6 s, then the breaker tripped. Damage stayed within the dial-ratio
+ceiling, as designed, but a campaign-wide estimate cannot anticipate who is dialed next. Holding
+the raised estimate for 60 s after a shift was tried: the maximum fell to 2.0% over 10 seeds, the
+median rose and utilisation dropped ~3 points, so it was not adopted.
 
 ### Fault-injection runs (predictive)
 
@@ -587,6 +615,7 @@ busy minus progressive busy, in percentage points:
 | F5 three workers | 83.4% | 786 | 0 | No overshoot; shared permit budget |
 | F6 answer rate 10% -> 70% | 84.9% | 792 | 12 (1.49%) | Burst from calls dialed under the old estimate; breaker tripped at t=333 and forced progressive; zero afterwards |
 | F7 pacer 5x too aggressive | 83.2% | 1,028 | 0 | Identical to B: the safety boundary sets the rate |
+| F8 calling window closes mid-run | 44.1% | 414 | 0 | Approvals stop at 19:00, ringing calls drain, 0 dials after closing |
 
 A falling answer rate (D, third phase) is the safe direction: fewer answers produce idle agents,
 not abandons, and the estimate recovers within the 400-outcome window.
@@ -659,10 +688,15 @@ events/s, ~0.25 write transactions/s.
 ## Architecture decisions
 
 The main design choices, with the reasoning and trade-offs of each, are in [docs/ARCHITECTURE_DECISIONS.md](docs/ARCHITECTURE_DECISIONS.md): a single relational database as the only shared state, compare-and-set with leases, single-use signed permits, two-layer safety, the webhook inbox with a monotonic state machine, cohort-based answer-rate statistics, the virtual clock shared by simulation and tests, per-worker circuit breakers,
-trigger-maintained counters, and one overflow model shared by pacer and safety.
+trigger-maintained counters, one overflow model shared by pacer and safety, and calling hours as a safety gate.
 
 ## Known limitations
 
+* **Campaign-wide answer rate.** Safety estimates one answer rate from resolved calls. When the
+  queue is ordered so that runs of very different borrowers are dialed back to back, the estimate
+  lags each switch; one of 11 clustered runs reached 4.17% abandons (see Mixed borrower
+  segments). Shuffling borrowers within a priority band avoids this operationally; the fix is a
+  per-borrower predicted answer rate inside the bound (roadmap 7).
 * **Conservative bound.** ~15% of agents idle at a 20% answer rate (82.8% busy against ~90% for
   a tuned predictive dialer), by design.
 * **Fixed dial-ratio ceiling.** 4x caps predictive at low answer rates (57% busy at 10% /
@@ -691,14 +725,15 @@ trigger-maintained counters, and one overflow model shared by pacer and safety.
    call; this is most of the remaining decision cost at 10,000 agents.
 4. **Postgres** past ~1,000 agents, with per-pool counters and one decider per pool.
 5. **Plivo adapter** on the existing provider interface.
-6. **Compliance:** calling-hour windows (8 am to 7 pm in India), DNC lists, consent,
-   per-borrower contact caps, a retention policy for the decision log.
+6. **Compliance:** borrower-requested calling hours (the campaign window is built), DNC lists,
+   consent, per-borrower contact caps, a retention policy for the decision log.
 7. **Borrower-level intelligence**, below.
 
 ### Borrower-level intelligence (not built)
 
-The simulator treats borrowers as one population with one answer rate. Per-borrower signals
-improve borrower selection, the pacer's answer-rate estimate, and abandon risk:
+The dialer uses one campaign-wide answer rate; the simulator can already model segments (see
+Mixed borrower segments). Per-borrower signals improve borrower selection, the answer-rate
+estimate, and abandon risk:
 
 | Signal | Effect on the dialer |
 |---|---|
@@ -707,7 +742,11 @@ improve borrower selection, the pacer's answer-rate estimate, and abandon risk:
 | **Priority by amount owed** (large balances get more attempts across different hours, small balances fewer, within per-day contact caps) | Borrower selection, as a score in `borrowers.priority` recomputed every 15 minutes in a batch, so claims stay an index walk |
 | **Tone of the last call** (agent disposition first, speech sentiment later: cooperative, promised to pay, disputed, hostile) | Abandon risk: hostile borrowers get `progressive_only` (always an agent waiting); disputed borrowers pause; promised-to-pay get one follow-up on the date |
 
-The Safety Controller is unchanged: it keeps its own pessimistic answer rate from real outcomes,
-so a wrong prediction can raise the pacer's request but cannot cause abandoned calls. Segment
-counters update in the call-outcome transaction, scores are a 15-minute batch per pool, and
-sentiment runs after the call, off the dialing path.
+Inside the Safety Controller only measured segment rates are used: each unbacked call carries its
+borrower's segment, safety takes a Wilson upper bound per segment from real outcomes, and the
+overflow bound becomes a sum over the calls actually in flight (Poisson-binomial) instead of one
+campaign-wide Binomial. That closes the clustered-queue gap, because the bound sees a run of
+high-answer borrowers when it is dialed, not after the answers arrive. Model predictions (best
+time, tone) stay on the pacer side, so a wrong model can raise the pacer's request but not the
+bound. Segment counters update in the call-outcome transaction, scores are a 15-minute batch per
+pool, and sentiment runs after the call, off the dialing path.

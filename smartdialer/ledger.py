@@ -1,7 +1,10 @@
 """Read model: counts and raw statistics derived from the source-of-truth tables."""
 from dataclasses import dataclass, field
 
+from .config import SafetyConfig
+
 ACTIVE_STATES = "('QUEUED','RESERVED','INITIATED','RINGING','ANSWERED','CONNECTED')"
+_DEFAULT_RATIO = SafetyConfig().max_dial_ratio   # single source: SafetyConfig
 
 
 @dataclass(frozen=True)
@@ -26,6 +29,7 @@ class Snapshot:
     recent_dialed: int = 0            # dialed within the resolve lag (outcomes still arriving)
     recent_answered: int = 0
     recently_left: int = 0            # agents that went OFFLINE/PAUSED in the last 30s
+    max_dial_ratio: float = _DEFAULT_RATIO  # safety's published ceiling; the pacer plans within it
 
     @property
     def available(self):
@@ -42,7 +46,8 @@ class Snapshot:
 
 
 def read_snapshot(c, now, long_window=400, short_window=40, abandon_window_s=900.0,
-                  presence_ttl_s=15.0, stats_n=200, resolve_lag_s=30.0):
+                  presence_ttl_s=15.0, stats_n=200, resolve_lag_s=30.0,
+                  max_dial_ratio=_DEFAULT_RATIO):
     # Counts come from trigger-maintained counter rows (see db.py), not table scans.
     agents = {r[0]: r[1] for r in c.execute("SELECT state, n FROM agent_counts WHERE n > 0")}
     unbacked = backed = waiting = 0
@@ -89,7 +94,7 @@ def read_snapshot(c, now, long_window=400, short_window=40, abandon_window_s=900
     stale = c.execute("SELECT COUNT(*) FROM agents WHERE state='AVAILABLE' AND last_heartbeat<?",
                       (now - presence_ttl_s,)).fetchone()[0]
     return Snapshot(
-        taken_at=now, agents=agents, unbacked_in_flight=unbacked, backed_in_flight=backed,
+        taken_at=now, max_dial_ratio=max_dial_ratio, agents=agents, unbacked_in_flight=unbacked, backed_in_flight=backed,
         answered_waiting=waiting,
         open_permits_progressive=perm.get("PROGRESSIVE", 0),
         open_permits_predictive=perm.get("PREDICTIVE", 0),

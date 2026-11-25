@@ -92,7 +92,9 @@ The main design choices in SmartDialer, with the reasoning and cost of each. How
   and recovery code against mock providers.
 * **Why:** the code being simulated is the code that ships; there is no separate model of the
   dialer to drift out of date.
-* **Solves:** fast and reproducible runs (20 simulated minutes in ~15 s from a seed), and
+* **Solves:** fast and reproducible runs (20 simulated minutes in ~15 s from a seed; the
+  simulator also injects a seeded id generator, because random `uuid4` ids made ties on equal
+  timestamps break differently from run to run), and
   deterministic tests of timing-dependent behaviour such as the 2 s abandon timer and lease
   expiry.
 * **Makes harder:** scenario runs are single threaded, so real thread interleavings are covered
@@ -128,7 +130,8 @@ The main design choices in SmartDialer, with the reasoning and cost of each. How
 ## 10. Pacer and safety share one overflow model
 
 * **What:** the predictive pacer uses the same binomial overflow bound as the Safety Controller
-  (`stats.py`), on the same count of free agents and with the same 4x dial-ratio ceiling, but with
+  (`stats.py`), on the same count of free agents and with the same dial-ratio ceiling, which is
+  defined once in `SafetyConfig` and published to the pacer in the snapshot, but with
   the expected answer rate and the 3% regulatory target. Safety applies it with an upper confidence
   bound and a 1.5% target.
 * **Why:** an earlier pacer used an expected-value formula and credited agents about to free up.
@@ -142,3 +145,16 @@ The main design choices in SmartDialer, with the reasoning and cost of each. How
   model would have to be added to both sides consistently. The two sides share code, so a bug in
   `stats.py` affects both; the safety gates that do not use the model still bound the damage.
 
+## 11. Calling hours are a Safety Controller gate
+
+* **What:** `SafetyConfig.calling_window` (08:00-19:00 local) is checked inside the safety
+  transaction. Outside it every request is rejected; inside it, permits expire at the earlier of
+  3 s and the window's end.
+* **Why:** dialing outside permitted hours is a compliance failure of the same kind as an
+  abandoned call, so it belongs with the other rules the pacer cannot override, and the permit
+  check already sits on the only path to `provider.dial()`.
+* **Solves:** one gate covers progressive and predictive, every worker, and permits issued
+  seconds before closing; no call is placed after 19:00 even if a worker holds a permit.
+* **Makes harder:** the window is per campaign. Borrower-requested hours (allowed outside the
+  window) and other time zones need a per-borrower window applied at borrower selection, and the
+  simulator and tests must set a clock origin (`clock_offset_s`) so time 0 falls inside the window.

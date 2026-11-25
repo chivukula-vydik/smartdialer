@@ -10,7 +10,7 @@ from .safety import PermitVerifier, SafetyController
 class DialerWorker:
     def __init__(self, worker_id, db, router, pacer, secret: bytes,
                  dcfg: DialerConfig = DialerConfig(), scfg: SafetyConfig = SafetyConfig(),
-                 crash_hook=None):
+                 crash_hook=None, new_id=None):
         self.id = worker_id
         self.db = db
         self.router = router
@@ -18,8 +18,9 @@ class DialerWorker:
         self.dcfg = dcfg
         self.scfg = scfg
         self.events = EventProcessor(db, router, dcfg, crash_hook)
-        self.safety = SafetyController(db, scfg, secret, router)
-        self.allocator = CallAllocator(db, router, PermitVerifier(secret), worker_id, dcfg, crash_hook)
+        self.safety = SafetyController(db, scfg, secret, router, new_id)
+        self.allocator = CallAllocator(db, router, PermitVerifier(secret), worker_id, dcfg, crash_hook,
+                                       new_id)
         self.house = Housekeeper(db, router, self.events, dcfg)
         self.last_decision = None
         self.last_request = None
@@ -42,7 +43,7 @@ class DialerWorker:
         self.house.run(now)
         self.house.agent_presence(now)
         snap = read_snapshot(self.db.conn(), now, self.scfg.long_window, self.scfg.short_window,
-                             self.scfg.abandon_window_s)
+                             self.scfg.abandon_window_s, max_dial_ratio=self.scfg.max_dial_ratio)
         req = self.pacer.request(snap)
         d = self.safety.evaluate(req, self.id, now)
         if d.cancel_unbacked:

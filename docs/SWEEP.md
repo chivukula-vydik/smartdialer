@@ -20,3 +20,29 @@ Output of `python -m sim.sweep`. Same setup as `docs/RESULTS.md`: 100 agents, pr
 | 70% | 240 s | 92.8% | 93.6% | +0.8 | 15.57 -> 14.91 | 0 (0.00%) | 0 | OK |
 
 Highest predictive abandon rate across the grid: 0.00% (answer rate 10%, talk 60 s). Breaker trip threshold: 2.5%.
+
+## Clustered borrower segments
+
+Segments: 30% of borrowers answer 60% (150 s talk), 50% answer 25% (120 s), 20% answer 5% (60 s); campaign average ~31%. Shuffled: segments mixed randomly through the queue. Block N: the queue alternates runs of N borrowers from one segment, so the answer rate of consecutive dialing bursts jumps between 5% and 60%. Two seeds per row.
+
+| Queue | Seed | Busy | Connected | Abandoned (rate) | Cancelled | Invariants |
+|---|---|---|---|---|---|---|
+| shuffled | 7 | 85.3% | 741 | 0 (0.00%) | 14 | OK |
+| shuffled | 11 | 85.0% | 731 | 0 (0.00%) | 6 | OK |
+| blocks of 10 | 7 | 83.6% | 739 | 0 (0.00%) | 53 | OK |
+| blocks of 10 | 11 | 83.6% | 744 | 0 (0.00%) | 47 | OK |
+| blocks of 25 | 7 | 83.7% | 731 | 0 (0.00%) | 164 | OK |
+| blocks of 25 | 11 | 83.1% | 752 | 0 (0.00%) | 207 | OK |
+| blocks of 100 | 7 | 83.0% | 716 | 2 (0.28%) | 123 | OK |
+| blocks of 100 | 11 | 81.9% | 727 | 6 (0.82%) | 59 | OK |
+| blocks of 200 | 7 | 81.0% | 725 | 0 (0.00%) | 90 | OK |
+| blocks of 200 | 11 | 81.0% | 706 | 0 (0.00%) | 73 | OK |
+
+### Blocks of 100, 11 seeds
+
+| Seed | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| Abandoned | 8 | 7 | 0 | 16 | 0 | 6 | 2 | 30 | 0 | 2 | 6 |
+| Rate | 1.35% | 1.09% | 0.00% | 2.24% | 0.00% | 0.84% | 0.28% | 4.17% | 0.00% | 0.28% | 0.82% |
+
+Median 0.82%, maximum 4.17%; 1 of 11 runs above 3%.

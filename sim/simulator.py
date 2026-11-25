@@ -1,5 +1,6 @@
 """Discrete-time simulator. Uses the real dialer code (DB, pacing, safety, allocator, events,
 recovery) on a virtual clock, so 20 simulated minutes run in seconds."""
+import dataclasses
 import json
 import os
 import random
@@ -32,6 +33,10 @@ class Scenario:
     faults: list = field(default_factory=list)   # (t, kind, arg)
     aggressiveness: float = 1.0
     safety: SafetyConfig = field(default_factory=SafetyConfig)
+    start_local_h: float = 10.0        # local time of day at t=0 (calling window is 08:00-19:00)
+    segments: tuple = ()               # mixed borrowers: ((share, answer_rate, talk_s), ...)
+    queue: str = "shuffled"            # segment order in the queue: shuffled | sorted | blocks
+    block: int = 50                    # borrowers per block when queue == 'blocks'
     seed: int = 7
     check_every: float = 60.0
 
@@ -39,27 +44,36 @@ class Scenario:
 class Sim:
     def __init__(self, sc: Scenario):
         self.sc = sc
+        self.scfg = dataclasses.replace(sc.safety, clock_offset_s=sc.start_local_h * 3600)
         self.rng = random.Random(sc.seed)
+        # seeded ids: ties on equal timestamps break the same way every run
+        id_rng = random.Random(sc.seed * 7919 + 1)
+        self.new_id = lambda: f"{id_rng.getrandbits(128):032x}"
         fd, self.path = tempfile.mkstemp(suffix=".db", prefix="sim-")
         os.close(fd)
         self.db = Db(self.path, fast=True)
-        self.pop = Population(sc.answer_rate, sc.talk_time)
         cfgs = {"A": PROVIDER_A, "B": PROVIDER_B}
-        self.providers = [MockProvider(cfgs[n], self.pop, seed=sc.seed + i)
-                          for i, n in enumerate(sc.providers)]
-        self.router = ProviderRouter(self.providers)
         self.now = 0.0
         repo.add_agents(self.db, [f"ag-{i:05d}" for i in range(sc.agents)], 0.0)
         n_b = int(sc.agents * sc.duration / 8) + 1000
-        repo.add_borrowers(self.db, [(f"b-{i:06d}", f"+9190000{i:05d}", self.rng.randint(0, 3))
-                                     for i in range(n_b)])
+        if sc.segments:
+            rows, profiles = self._segmented_borrowers(n_b)
+        else:
+            rows, profiles = [(f"b-{i:06d}", f"+9190000{i:05d}", self.rng.randint(0, 3))
+                              for i in range(n_b)], None
+        repo.add_borrowers(self.db, rows)
+        self.pop = Population(sc.answer_rate, sc.talk_time, profiles=profiles)
+        self.providers = [MockProvider(cfgs[n], self.pop, seed=sc.seed + i)
+                          for i, n in enumerate(sc.providers)]
+        self.router = ProviderRouter(self.providers)
         self.workers = []
         from smartdialer.worker import DialerWorker
         for i in range(sc.workers):
             pacer = (PredictivePacer(aggressiveness=sc.aggressiveness) if sc.mode == "PREDICTIVE"
                      else ProgressivePacer())
             w = DialerWorker(f"w{i + 1}", self.db, self.router, pacer, SECRET,
-                             DialerConfig(), sc.safety, crash_hook=self._hook(f"w{i + 1}"))
+                             DialerConfig(), self.scfg, crash_hook=self._hook(f"w{i + 1}"),
+                             new_id=self.new_id)
             self.workers.append(w)
         self.alive = {w.id: True for w in self.workers}
         self.crash_at = {}            # worker id -> crash point name
@@ -74,6 +88,39 @@ class Sim:
         self.faults = sorted(sc.faults, key=lambda f: f[0])
 
     # webhooks land on whichever worker is up (load balancer)
+    def _segmented_borrowers(self, n):
+        """Assign each borrower a segment. Priority sets queue order (claimed highest first):
+        shuffled = random order; sorted = most responsive segment first; blocks = alternating
+        runs of `block` borrowers from one segment, so each dialing burst is homogeneous."""
+        sc, rng = self.sc, self.rng
+        k = len(sc.segments)
+        counts = [int(round(share * n)) for share, _, _ in sc.segments]
+        counts[-1] = n - sum(counts[:-1])
+        seg = [j for j in range(k) for _ in range(counts[j])]
+        if sc.queue == "blocks":
+            pools = [[j] * counts[j] for j in range(k)]
+            seg, j = [], 0
+            while any(pools):
+                if pools[j % k]:
+                    take = min(sc.block, len(pools[j % k]))
+                    seg += pools[j % k][:take]
+                    pools[j % k] = pools[j % k][take:]
+                j += 1
+        else:
+            rng.shuffle(seg)
+        rows, profiles = [], {}
+        for i, j in enumerate(seg):
+            phone = f"+9190000{i:05d}"
+            if sc.queue == "shuffled":
+                prio = rng.randint(0, 3)
+            elif sc.queue == "sorted":
+                prio = k - j                               # segment 0 first
+            else:
+                prio = n - i // sc.block                   # block 0 first, then 1, ...
+            rows.append((f"b-{i:06d}", phone, prio))
+            profiles[phone] = (sc.segments[j][1], sc.segments[j][2])
+        return rows, profiles
+
     def _webhook(self, ev):
         for w in self.workers:
             if self.alive[w.id]:
@@ -115,7 +162,7 @@ class Sim:
             old = next(w for w in self.workers if w.id == arg)
             nid = arg + "r"
             w = DialerWorker(nid, self.db, self.router, old.pacer, SECRET, DialerConfig(),
-                             self.sc.safety, crash_hook=self._hook(nid))
+                             self.scfg, crash_hook=self._hook(nid), new_id=self.new_id)
             self.workers.append(w)
             self.alive[nid] = True
         self.events_log.append({"t": t, "fault": kind, "arg": str(arg)})
@@ -217,6 +264,10 @@ class Sim:
             "AVG(CASE WHEN connected_at IS NOT NULL THEN connected_at - answered_at END) wait "
             "FROM calls")
         conn, ab = tot["connected"] or 0, tot["abandoned"] or 0
+        from smartdialer.safety import calling_seconds_left
+        outside = sum(1 for (t,) in db.conn().execute(
+            "SELECT dialed_at FROM calls WHERE dialed_at IS NOT NULL")
+            if calling_seconds_left(t, self.scfg) <= 0)
         verdicts = {}
         for d in self.decisions:
             verdicts[d["verdict"]] = verdicts.get(d["verdict"], 0) + 1
@@ -243,6 +294,7 @@ class Sim:
             "answered": tot["answered"] or 0, "connected": conn, "abandoned": ab,
             "abandon_rate": round(ab / (conn + ab), 4) if conn + ab else 0.0,
             "late_connects": tot["late_connect"] or 0,
+            "dials_outside_window": outside,
             "avg_answer_to_agent_s": round(tot["wait"] or 0.0, 2),
             "cancelled": tot["cancelled"] or 0, "failed": tot["failed"] or 0,
             "connects_per_agent_hour": round(conn / self.sc.agents / (self.sc.duration / 3600), 2),

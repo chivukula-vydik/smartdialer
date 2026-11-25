@@ -16,6 +16,8 @@ from smartdialer.providers.base import (ProviderError, ProviderEvent,  # noqa: E
 from smartdialer.worker import DialerWorker  # noqa: E402
 
 SECRET = b"test-secret"
+# Test clocks start at 0; this offset makes t=0 10:00 local, inside the 08:00-19:00 calling window.
+TEST_SAFETY = SafetyConfig(clock_offset_s=10 * 3600)
 
 
 class ManualProvider(TelecomProvider):
@@ -69,7 +71,7 @@ class Stack:
 
     def new_worker(self, wid, crash_hook=None, pacer=None):
         return DialerWorker(wid, self.db, self.router, pacer or ProgressivePacer(), SECRET,
-                            DialerConfig(), SafetyConfig(), crash_hook=crash_hook)
+                            DialerConfig(), TEST_SAFETY, crash_hook=crash_hook)
 
     def agent(self, aid):
         return self.db.one("SELECT * FROM agents WHERE id=?", (aid,))

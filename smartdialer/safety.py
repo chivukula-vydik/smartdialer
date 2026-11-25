@@ -44,11 +44,21 @@ class Decision:
     numbers: dict = field(default_factory=dict)
 
 
+def calling_seconds_left(now: float, cfg: SafetyConfig) -> float:
+    """Seconds until the calling window closes; 0 when outside it, inf when no window is set."""
+    if cfg.calling_window is None:
+        return math.inf
+    start, end = cfg.calling_window
+    tod = (now + cfg.clock_offset_s) % 86400
+    return end - tod if start <= tod < end else 0.0
+
+
 # ---------- controller ----------
 
 class SafetyController:
-    def __init__(self, db, cfg: SafetyConfig, secret: bytes, router=None):
+    def __init__(self, db, cfg: SafetyConfig, secret: bytes, router=None, new_id=None):
         self.db = db
+        self.new_id = new_id or (lambda: uuid.uuid4().hex)   # injectable for reproducible simulation
         self.cfg = cfg
         self._secret = secret
         self.router = router
@@ -59,10 +69,11 @@ class SafetyController:
 
     def evaluate(self, req: PacingRequest, worker_id: str, now: float) -> Decision:
         cfg = self.cfg
-        did = uuid.uuid4().hex[:12]
+        did = self.new_id()[:12]
         reasons, nums = [], {}
         with self.db.tx() as c:
-            s = read_snapshot(c, now, cfg.long_window, cfg.short_window, cfg.abandon_window_s)
+            s = read_snapshot(c, now, cfg.long_window, cfg.short_window, cfg.abandon_window_s,
+                              max_dial_ratio=cfg.max_dial_ratio)
             st = c.execute("SELECT * FROM safety_state WHERE id=1").fetchone()
             forced = bool(st["forced_progressive"])
 
@@ -131,6 +142,11 @@ class SafetyController:
             if now - req.based_on > cfg.max_request_age_s:
                 verdict = REJECTED
                 reasons.append(f"request based on snapshot {now - req.based_on:.1f}s old")
+            window_left = calling_seconds_left(now, cfg)
+            nums["calling_window_left_s"] = None if math.isinf(window_left) else round(window_left, 1)
+            if verdict is None and window_left <= 0:
+                verdict = REJECTED
+                reasons.append("outside calling hours")
             allowance = self.router.allowance(now) if self.router else None
             nums["provider_allowance"] = "unlimited" if allowance is None else allowance
             if verdict is None and allowance == 0:
@@ -187,14 +203,14 @@ class SafetyController:
                     verdict = REDUCED
 
             permits = []
-            exp = now + cfg.permit_ttl_s
+            exp = now + min(cfg.permit_ttl_s, window_left)   # no permit outlives the window
             if mode == Mode.PROGRESSIVE:
                 plan = [(Mode.PROGRESSIVE, approved)]
             else:
                 plan = [(Mode.PROGRESSIVE, prog_n), (Mode.PREDICTIVE, approved)]
             for m, n in plan:
                 for _ in range(n):
-                    pid = uuid.uuid4().hex
+                    pid = self.new_id()
                     sig = self._sign(pid, m.value, exp, did)
                     permits.append(Permit(pid, did, m, exp, sig))
             if permits:

@@ -26,6 +26,8 @@ def jump_rate(t):
 
 
 BASE = {"A": (0.2, 120), "B": (0.5, 90), "C": (0.7, 180), "D": (d_rate, d_talk)}
+# Mixed borrowers: (share, answer rate, talk s). Campaign average answer rate ~31%.
+SEGMENTS = ((0.3, 0.6, 150), (0.5, 0.25, 120), (0.2, 0.05, 60))
 
 
 def scenarios(dur):
@@ -50,6 +52,12 @@ def scenarios(dur):
         Scenario(name="F6-rate-jump", answer_rate=jump_rate, talk_time=120, duration=dur),
         Scenario(name="F7-pacing-bug-5x", answer_rate=0.5, talk_time=90, duration=dur,
                  aggressiveness=5.0),
+        # starts so that 19:00 local falls halfway through the run
+        Scenario(name="F8-window-close", answer_rate=0.3, talk_time=120, duration=dur,
+                 start_local_h=19.0 - dur / 2 / 3600, faults=[(dur / 2, "marker", "19:00")]),
+        Scenario(name="M1-mixed-shuffled", segments=SEGMENTS, queue="shuffled", duration=dur),
+        Scenario(name="M2-mixed-blocks", segments=SEGMENTS, queue="blocks", block=100,
+                 duration=dur),
     ]
     return out
 
@@ -217,7 +225,15 @@ def write_report(rows, decisions):
             if f"{k}-{m}" in by:
                 L.append(_row(by[f"{k}-{m}"]))
     L += ["", "![comparison](results/comparison.png)", "",
-          "## Failure and stress runs (predictive mode)", "", HDR]
+          "## Mixed borrower segments (predictive mode)", "",
+          "Segments: 30% answer 60% (150 s talk), 50% answer 25% (120 s), 20% answer 5% (60 s). "
+          "M1: segments shuffled through the queue. M2: queue in alternating runs of 100 borrowers "
+          "from one segment, so the answer rate of each dialing burst jumps between 5% and 60%.", "",
+          HDR]
+    for r in rows:
+        if r["scenario"].startswith("M"):
+            L.append(_row(r))
+    L += ["", "## Failure and stress runs (predictive mode)", "", HDR]
     for r in rows:
         if r["scenario"].startswith("F"):
             L.append(_row(r))
@@ -230,7 +246,7 @@ def write_report(rows, decisions):
                   f"- allocator: {json.dumps({k: v for k, v in r['allocator'].items() if v})}",
                   f"- housekeeping: {json.dumps({k: v for k, v in r['housekeeping'].items() if v})}",
                   f"- circuit trips: {json.dumps(r['provider_trips'])}, late connects (>2 s): "
-                  f"{r['late_connects']}",
+                  f"{r['late_connects']}, dials outside calling hours: {r['dials_outside_window']}",
                   f"- log: {json.dumps(r['log'])}", "",
                   f"![{r['scenario']}](results/{r['scenario']}.png)", ""]
     # agent drop reaction
