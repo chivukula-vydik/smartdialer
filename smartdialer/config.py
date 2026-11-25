@@ -16,6 +16,9 @@ class DialerConfig:
     provider_backoff_base_s: float = 5.0
     provider_backoff_cap_s: float = 300.0
     max_provider_failures: int = 8
+    permit_retention_s: float = 600.0    # delete used/expired permits after this
+    event_retention_s: float = 3600.0    # delete processed inbox events after this
+    prune_every_s: float = 60.0
 
 
 @dataclass(frozen=True)

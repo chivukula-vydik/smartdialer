@@ -26,4 +26,12 @@ def check(db):
         errs.append(f"active call {r['id']} but borrower is {r['status']}")
     for r in q("SELECT agent_id, COUNT(*) n FROM calls WHERE state='CONNECTED' GROUP BY agent_id HAVING n>1"):
         errs.append(f"agent {r['agent_id']} connected to {r['n']} calls")
+    real = {r[0]: r[1] for r in q("SELECT state, COUNT(*) FROM agents GROUP BY state")}
+    kept = {r[0]: r[1] for r in q("SELECT state, n FROM agent_counts WHERE n != 0")}
+    if real != kept:
+        errs.append(f"agent_counts {kept} != actual {real}")
+    real = {(r[0], r[1]): r[2] for r in q("SELECT state, agent_id IS NULL, COUNT(*) FROM calls GROUP BY 1, 2")}
+    kept = {(r[0], r[1]): r[2] for r in q("SELECT state, unbacked, n FROM call_counts WHERE n != 0")}
+    if real != kept:
+        errs.append(f"call_counts {kept} != actual {real}")
     return errs

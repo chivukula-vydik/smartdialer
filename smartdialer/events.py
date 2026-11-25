@@ -63,14 +63,17 @@ class EventProcessor:
 
         # Record facts even if the transition itself is stale: an ANSWERED that arrives after
         # COMPLETED still tells us the borrower picked up (stats need it).
+        # The provider's clock may run ahead of ours. A timestamp later than our receipt time
+        # would make an answered call look younger and stretch the 2 s abandon timer, so cap it.
+        t_event = min(ev["occurred_at"], ev["received_at"])
         answered = typ == EV_ANSWERED or (typ == EV_COMPLETED and payload.get("answered"))
         if answered and call["net_outcome"] is None:
             c.execute("UPDATE calls SET answered_at=COALESCE(answered_at, ?), net_outcome='ANSWER', "
-                      "outcome_at=? WHERE id=?", (ev["occurred_at"], ev["occurred_at"], call["id"]))
+                      "outcome_at=? WHERE id=?", (t_event, t_event, call["id"]))
         elif (typ in (EV_COMPLETED, EV_FAILED) and reason in NETWORK_NOANSWER
               and call["net_outcome"] is None):
             c.execute("UPDATE calls SET net_outcome='NOANSWER', outcome_at=? WHERE id=?",
-                      (ev["occurred_at"], call["id"]))
+                      (t_event, call["id"]))
 
         target, outcome = resolve_event(cur, typ, payload)
         if target is None:

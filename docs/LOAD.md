@@ -8,10 +8,10 @@ Each call = 2 write transactions (reserve agent + claim borrower + insert call; 
 
 | processes | agents | calls/s | tx/s | tx p50 ms | tx p99 ms | invariant errors |
 |---|---|---|---|---|---|---|
-| 1 | 100 | 3870 | 7741 | 0.05 | 4.98 | 0 |
-| 4 | 100 | 4749 | 9498 | 0.06 | 4.68 | 0 |
-| 8 | 100 | 5326 | 10653 | 0.06 | 6.29 | 0 |
-| 8 | 1000 | 3064 | 6129 | 0.13 | 18.65 | 0 |
+| 1 | 100 | 2704 | 5408 | 0.07 | 6.56 | 0 |
+| 4 | 100 | 3462 | 6923 | 0.08 | 5.72 | 0 |
+| 8 | 100 | 3605 | 7210 | 0.08 | 8.6 | 0 |
+| 8 | 1000 | 2420 | 4839 | 0.16 | 20.49 | 0 |
 
 ## 2. One safety decision vs scale
 
@@ -19,10 +19,10 @@ Snapshot (counts by state, outcome windows, abandon window) + binomial bound + p
 
 | agents | calls in history | decision p50 ms | decision p99 ms | of which snapshot p50 ms | permits/decision |
 |---|---|---|---|---|---|
-| 100 | 20000 | 3.8 | 5.4 | 3.5 | 9 |
-| 1000 | 100000 | 20.6 | 21.2 | 17.5 | 146 |
-| 10000 | 200000 | 54.3 | 63.6 | 35.9 | 1847 |
+| 100 | 20000 | 0.8 | 1.2 | 0.5 | 9 |
+| 1000 | 100000 | 3.9 | 4.6 | 0.7 | 146 |
+| 10000 | 200000 | 24.2 | 31.5 | 1.4 | 1847 |
 
 ## 3. Event pipeline
 
-20000 events (25% exact duplicates): ingest 31516/s, process 4078/s, invariant errors 0.
+20000 events (25% exact duplicates): ingest 24067/s, process 3287/s, invariant errors 0.

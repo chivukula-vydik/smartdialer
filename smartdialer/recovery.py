@@ -16,7 +16,8 @@ class Housekeeper:
         self.events = events
         self.cfg = cfg
         self.stats = dict(bridged_late=0, abandoned=0, recovered=0, reconciled_failed=0,
-                          stale_closed=0, leases_expired=0, presence_logouts=0)
+                          stale_closed=0, leases_expired=0, presence_logouts=0, pruned=0)
+        self._last_prune = 0.0
 
     def run(self, now):
         self.bridge_waiting(now)
@@ -25,6 +26,25 @@ class Housekeeper:
         self.reconcile_predial(now)
         self.reconcile_stale(now)
         self.expire_leases(now)
+        if now - self._last_prune >= self.cfg.prune_every_s:
+            self.prune(now)
+            self._last_prune = now
+
+    def prune(self, now, batch=5000):
+        """Retention: permits that were used or expired, and processed inbox events, are deleted
+        after their retention window. The decisions table is kept as the audit trail. Deleting an
+        old event is safe: if the provider redelivers it later, the state machine ignores it."""
+        n = 0
+        with self.db.tx() as c:
+            n += c.execute(
+                "DELETE FROM permits WHERE id IN (SELECT id FROM permits WHERE issued_at < ? "
+                "AND (consumed_by IS NOT NULL OR revoked=1 OR expires_at < ?) LIMIT ?)",
+                (now - self.cfg.permit_retention_s, now, batch)).rowcount
+            n += c.execute(
+                "DELETE FROM call_events WHERE seq IN (SELECT seq FROM call_events WHERE processed=1 "
+                "AND received_at < ? LIMIT ?)", (now - self.cfg.event_retention_s, batch)).rowcount
+        self.stats["pruned"] += n
+        return n
 
     # ---- answered calls waiting for an agent ----
     def bridge_waiting(self, now):
@@ -87,7 +107,10 @@ class Housekeeper:
                 outcome = "provider" if call["dial_uncertain"] else "requeue"
                 self._close(call, C.FAILED, "not_placed", outcome, now)
             elif st in ("COMPLETED", "FAILED"):
-                pass  # terminal event is in the inbox (or will be); stale reconciler is the backstop
+                # The call went out and already ended, but we never saw its events. Close it here:
+                # no other routine covers pre-dial states, so otherwise the reserved agent would be
+                # held forever. Late events for it are ignored (terminal absorbs) apart from facts.
+                self._close(call, C.FAILED, "ended_unseen", "provider", now)
             else:
                 self._adopt(call, now)
 

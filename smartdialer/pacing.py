@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 
 from .ledger import Snapshot
 from .models import Mode
+from .stats import max_safe_inflight
 
 
 @dataclass(frozen=True)
@@ -25,25 +26,32 @@ class ProgressivePacer:
 
 
 class PredictivePacer:
-    """Expected-value pacing.
+    """Pacing with the same overflow model the Safety Controller uses, at the expected answer rate.
 
-    capacity  = free agents + agents expected to free up before new calls get answered
-    demand    = answers expected from calls already ringing
-    new_calls = (capacity - demand) / p
+    C = agents free now (not already promised to a call)
+    p = expected (mean) answer rate
+    m = largest number of unbacked calls in flight with
+        E[(X - C)+] <= target_abandon * E[min(X, C)],  X ~ Binomial(m, p)
+    request = m - calls already in flight
 
-    p comes from a Beta prior blended with the recent window, so a cold campaign starts
-    near the prior instead of at 0/0. Aggressiveness > 1 deliberately over-asks; the Safety
-    Controller is the one that says no."""
+    The pacer uses the same agents and the same 4x dial-ratio ceiling as safety, and differs in
+    exactly two deliberate ways: it uses the mean answer rate instead of an upper confidence bound,
+    and it aims at the regulatory limit (3%) instead of safety's 1.5% margin. So it always asks for at least what safety allows; the difference is
+    the cost of the safety margin. p comes from a Beta prior blended with the recent window, so a
+    cold campaign starts near the prior instead of at 0/0. Aggressiveness > 1 deliberately
+    over-asks."""
     mode = Mode.PREDICTIVE
 
     def __init__(self, prior_p=0.3, prior_weight=10, aggressiveness=1.0, wrap_s=10.0,
-                 default_ring_s=12.0, default_talk_s=120.0):
+                 default_ring_s=12.0, default_talk_s=120.0, target_abandon=0.03, max_ratio=4.0):
         self.prior_p = prior_p
         self.prior_w = prior_weight
         self.aggr = aggressiveness
         self.wrap_s = wrap_s
         self.default_ring_s = default_ring_s
         self.default_talk_s = default_talk_s
+        self.target_abandon = target_abandon
+        self.max_ratio = max_ratio
 
     def answer_rate(self, s: Snapshot) -> float:
         # Short window weighted 2x so a regime change shows up within ~40 outcomes.
@@ -58,18 +66,18 @@ class PredictivePacer:
         p = self.answer_rate(s)
         ring = s.avg_ring_s or self.default_ring_s
         talk = s.avg_talk_s or self.default_talk_s
-        horizon = ring + 1.0                     # time until newly dialed calls start answering
-        connected = s.agents.get("CONNECTED", 0)
-        wrap = s.agents.get("WRAP_UP", 0)
-        soon_free = connected * min(1.0, horizon / talk) + wrap * min(1.0, horizon / self.wrap_s)
-        capacity = s.available + soon_free - s.answered_waiting
+        capacity = max(0, s.available - s.stale_heartbeats - s.answered_waiting
+                       - s.open_permits_progressive)
         in_flight = s.unbacked_in_flight + s.open_permits_predictive
-        expected_answers = in_flight * p
-        deficit = capacity - expected_answers
-        n = max(0, math.floor(self.aggr * deficit / p)) if deficit > 0 else 0
+        hard = max(in_flight, math.floor(self.max_ratio * capacity))
+        target = max_safe_inflight(p, capacity, self.target_abandon, hard)
+        room = target - in_flight
+        n = max(0, math.floor(self.aggr * room))
         return PacingRequest(Mode.PREDICTIVE, n, s.taken_at, {
             "p_hat": round(p, 4), "free_agents": s.available,
-            "soon_free": round(soon_free, 2), "capacity": round(capacity, 2),
-            "in_flight_unbacked": in_flight, "expected_answers_in_flight": round(expected_answers, 2),
-            "deficit": round(deficit, 2), "ring_s": round(ring, 1), "talk_s": round(talk, 1),
-            "formula": "floor(aggr * (capacity - in_flight*p) / p)"})
+            "capacity": capacity,
+            "in_flight_unbacked": in_flight, "expected_answers_in_flight": round(in_flight * p, 2),
+            "target_in_flight": target, "target_abandon": self.target_abandon,
+            "ring_s": round(ring, 1), "talk_s": round(talk, 1),
+            "formula": "largest m with E[(X-C)+] <= target * E[min(X,C)], X~Bin(m,p_hat); "
+                       "request = aggr * (m - in_flight)"})

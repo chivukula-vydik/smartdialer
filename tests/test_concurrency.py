@@ -86,3 +86,44 @@ def test_stale_cas_loses(tmp_path):
         assert repo.reserve_specific_agent(c, "a", "c1", "w1", 9, 1)
     with db.tx() as c:
         assert not repo.reserve_specific_agent(c, "a", "c2", "w2", 9, 1)
+
+
+def _churn(path, seed, n, q):
+    import random
+    rng = random.Random(seed)
+    db = Db(path)
+    for _ in range(n):
+        cid = uuid.uuid4().hex
+        with db.tx() as c:
+            aid = repo.reserve_agent(c, cid, f"p{seed}", 1e9, 1.0)
+            b = repo.claim_borrower(c, f"p{seed}", 1.0, 1e9, cid, True) if aid else None
+            if aid and b:
+                repo.insert_call(c, cid, b["id"], aid, Mode.PROGRESSIVE, C.RESERVED, None, "w", 1e9, 1.0)
+            elif aid:
+                repo.agent_cas(c, aid, [repo.A.RESERVED], repo.A.AVAILABLE, 1.0, call_id=cid, set_call=None)
+        if aid and b:
+            end = rng.choice([C.COMPLETED, C.FAILED, C.CANCELLED])
+            with db.tx() as c:
+                repo.call_cas(c, cid, [C.RESERVED], end, 2.0)
+                repo.release_agent_for_call(c, aid, cid, 2.0)
+                repo.settle_borrower(c, b["id"], cid, "requeue", 2.0, repo.DialerConfig())
+                c.execute("UPDATE borrowers SET next_attempt_at=0 WHERE id=?", (b["id"],))
+    q.put(seed)
+
+
+def test_counters_stay_exact_under_concurrent_writes(tmp_path):
+    """Trigger-maintained counters must equal real counts after racing processes."""
+    from smartdialer.invariants import check
+    path = str(tmp_path / "cnt.db")
+    db = Db(path)
+    repo.add_agents(db, [f"a{i}" for i in range(20)], 0.0)
+    repo.add_borrowers(db, [(f"b{i}", "x", 0) for i in range(40)])
+    ctx = mp.get_context("spawn")
+    q = ctx.Queue()
+    ps = [ctx.Process(target=_churn, args=(path, i, 150, q)) for i in range(4)]
+    [p.start() for p in ps]
+    [q.get(timeout=120) for _ in ps]
+    [p.join() for p in ps]
+    assert check(db) == []
+    counts = {r["state"]: r["n"] for r in db.q("SELECT state, n FROM agent_counts")}
+    assert sum(counts.values()) == 20

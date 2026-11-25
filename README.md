@@ -27,7 +27,7 @@ Simulated results, 100 agents, 20 minutes ([docs/RESULTS.md](docs/RESULTS.md)):
 | 70% / 180 s | 90.4% | 91.8% | 0% |
 | changing | 64.5% | 80.5% | 0% |
 
-No double allocation or invariant violation in any scenario run, the 49 tests, or over 100k
+No double allocation or invariant violation in any scenario run, the 54 tests, or ~100k
 contended allocations in the load test.
 
 ## Quick start
@@ -38,7 +38,7 @@ Python 3.10+. The dialer uses the standard library only; pytest for tests, matpl
 python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 
-python -m pytest -q                 # 49 tests, ~10 s
+python -m pytest -q                 # 54 tests, ~10 s
 python -m sim.run                   # all 16 scenarios, 2-5 min -> docs/RESULTS.md, docs/results/*, dashboard
 python -m sim.run --quick           # 10-minute scenarios
 python -m sim.run --only F3         # one scenario (prefix match); updates its row and the dashboard
@@ -55,14 +55,16 @@ decision log to that second. Raw decisions are in `docs/results/<scenario>.decis
 ```
 smartdialer/
   models.py       agent + call state machines, event resolution (pure functions)
-  db.py           schema, write transactions (BEGIN IMMEDIATE), unique-index invariants
+  db.py           schema, write transactions (BEGIN IMMEDIATE), unique-index invariants,
+                  trigger-maintained state counters
   repo.py         compare-and-set primitives: reserve agent, claim borrower, transitions
   ledger.py       snapshot / statistics read model
   pacing.py       ProgressivePacer, PredictivePacer (no access to DB, provider or safety)
+  stats.py        answer-rate bounds and the binomial overflow model, shared by pacer and safety
   safety.py       SafetyController (gates, overflow bound, permits), PermitVerifier
   allocator.py    CallAllocator: the only caller of provider.dial()
   events.py       webhook inbox + exactly-once processing
-  recovery.py     abandon timer, crash recovery, reconciliation, lease expiry
+  recovery.py     abandon timer, crash recovery, reconciliation, lease expiry, retention
   health.py       circuit breaker + provider router
   worker.py       worker loop
   invariants.py   cross-table invariants checked by tests and the simulator
@@ -150,7 +152,12 @@ The fast loop protects calls that are already answered; the slow loop decides ne
 | `permits` | Issued dial permits | `mode`, `expires_at`, `sig`, `consumed_by`, `revoked` |
 | `decisions` | Audit log of every safety decision | requested, approved, verdict, reasons, numbers (pacer rationale + safety inputs) |
 | `safety_state` | Abandon breaker shared by all workers | `forced_progressive`, `forced_since` |
+| `agent_counts`, `call_counts` | Running counts of agents per state and calls per (state, has agent) | maintained by triggers on `agents` and `calls` in the same transaction as each change |
 | `workers` | Worker heartbeats | `heartbeat` |
+
+Retention: permits that were used or expired are deleted after 10 minutes and processed inbox
+events after 1 hour (`Housekeeper.prune`, once a minute, in batches). The `decisions` table is
+kept as the audit trail.
 
 Partial unique indexes on `calls(agent_id)` and `calls(borrower_id)` over non-terminal states
 enforce one live call per agent and per borrower, independently of application code.
@@ -224,6 +231,7 @@ and recording the dial.
 | Terminal absorbs | After COMPLETED / FAILED / CANCELLED / ABANDONED every event is `after_terminal` |
 | Same state | `duplicate`, no transition |
 | Facts kept | A late ANSWERED still sets `net_outcome='ANSWER'` so answer-rate statistics stay correct |
+| Timestamps capped | Event times are capped at our receipt time, so a provider clock running ahead cannot stretch the 2 s abandon timer |
 | COMPLETED in context | `answered=true`, or a call already ANSWERED/CONNECTED, means COMPLETED; otherwise FAILED (no answer) |
 
 | Event sequence | Outcome |
@@ -362,6 +370,7 @@ is a conference/transfer to the agent leg.
 |---|---|---|
 | Worker crash after reserve, before dial | Call stays RESERVED with a 10 s lease; after expiry a housekeeper sees `provider IS NULL` -> FAILED `not_dialed`, agent AVAILABLE, borrower requeued without an attempt | `recovery.reconcile_predial`, `test_worker_crash_before_dial_releases_everything` |
 | Worker crash after dial, before recording | Provider events move the call forward from the inbox; without events, after the lease the housekeeper calls `get_status(call_id)` and adopts the call (INITIATED, agent DIALING) | `test_worker_crash_after_dial_is_adopted`, sim F4 |
+| Worker crash after dial, events lost, provider reports the call already ended | Housekeeper closes it as FAILED `ended_unseen`, frees the reserved agent, requeues the borrower with provider backoff; late events are ignored apart from facts | `test_crash_after_dial_and_call_already_ended_frees_agent` |
 | Worker crash while processing an event | Transaction rolls back; event stays unprocessed for another worker | `test_crash_inside_answered_processing_then_completed` |
 | Crash after ANSWERED committed, before bridge | CONNECTED with `bridged_at NULL`; housekeeper retries the bridge | `test_crash_after_answered_commit_before_bridge` |
 | Dial timeout | Agent and borrower held; reconcile via `get_status` after 3 s; after 30 s unreachable, best-effort hang-up and FAILED `provider_lost` | `test_dial_timeout_*`, `test_provider_unreachable_during_reconcile_gives_up_eventually` |
@@ -371,6 +380,7 @@ is a conference/transfer to the agent leg.
 | Agents disappear (40 of 100) | Next decision (<= 1 s) sees `recently_left`, recomputes the bound, revokes unused permits, cancels excess unbacked calls (not yet ringing first), approves 0 until in flight drains | `test_agent_drop_cancels_excess_ringing`, sim F3 |
 | Duplicate events | Exact: dropped at the inbox. New id: `duplicate` / `stale` no-op | sim F1 |
 | Out-of-order events | Monotonic rank + terminal absorption | `test_every_ordering_of_a_normal_call_converges` |
+| Provider clock ahead of ours | Event times capped at receipt time; abandon timer measured from the earlier of the two | `test_provider_clock_ahead_does_not_stretch_abandon_timer` |
 | Stale agent presence | Heartbeat older than 15 s: not counted as free by safety; logged out by the housekeeper | `recovery.agent_presence` |
 
 ## Pacing and safety
@@ -396,22 +406,28 @@ Predictive dialing runs as a bounded overdraft on top of progressive:
 
 | | Pacing engine | Safety Controller |
 |---|---|---|
-| Computes | Calls needed to keep agents busy | Calls allowed in flight |
+| Computes | Calls in flight that keep agents busy at the expected answer rate | Calls allowed in flight |
+| Model | Binomial overflow bound (`stats.py`) | Same model |
 | Inputs | Frozen `Snapshot` (up to 2 s old) | Fresh read inside its own write transaction |
-| Answer rate | Point estimate (Beta prior + window) | Upper confidence bound |
-| Agents about to free up | Credited (expected value) | Not credited; only AVAILABLE with a fresh heartbeat |
+| Answer rate | Expected value (Beta prior + window) | Upper confidence bound |
+| Abandon target | 3% (regulatory limit) | 1.5%, shrinking toward 0 as the rolling rate rises |
+| Agents counted | Free now, not promised to a call | Same, plus fresh heartbeat required |
+| Dial-ratio ceiling | 4 x free agents | Same |
 | Output | A number + rationale | Signed single-use permits + verdict + reasons |
+
+Because both sides use the same model on the same agents, the pacer always asks for at least
+what safety allows, and the difference between the two is exactly the cost of the safety margin
+(pessimistic answer rate, tighter abandon target).
 
 ### Predictive pacer (`pacing.py`)
 
 ```
 p          = (prior_p*w + answers_long + answers_short) / (w + n_long + n_short)    (short window weighted 2x)
              raised to the answers already seen among calls dialed in the last 30 s
-horizon    = avg ring-to-answer + 1 s
-soon_free  = CONNECTED * min(1, horizon / avg_talk) + WRAP_UP * min(1, horizon / wrap)
-capacity   = AVAILABLE + soon_free - answered_waiting
+C          = AVAILABLE - stale heartbeats - answered_waiting - open progressive permits
 in_flight  = unbacked calls ringing + unconsumed predictive permits
-request    = floor( aggressiveness * (capacity - in_flight * p) / p )
+target m   = largest m <= 4*C with E[(X - C)+] <= 3% * E[min(X, C)],  X ~ Binomial(m, p)
+request    = floor( aggressiveness * (m - in_flight) )
 ```
 
 Answer-rate statistics use resolved dial cohorts: calls dialed more than 30 s ago, so every
@@ -471,18 +487,22 @@ holding provider credentials.
 Every decision is stored in `decisions` (and `docs/results/*.decisions.jsonl`) with the
 pacer's rationale and the safety inputs. Example, scenario B at t = 401 s:
 
-* Pacer: p = 0.52, 20 free + 16.1 freeing within a 9.3 s horizon = capacity 36.1; 25 calls
-  ringing bring ~13 answers; (36.1 - 13) / 0.52 = **44** requested.
-* Safety: 20 free (no credit for agents about to free), p_hi = 0.568, 25 calls ringing.
+* 20 agents free, 25 unbacked calls already ringing.
+* Pacer: expected answer rate p = 0.52, target 3%.
+* Safety: upper-bound answer rate p_hi = 0.568, target 1.5%.
 
-| Total in flight m | E[abandon] | E[connect] | Ratio |
-|---|---|---|---|
-| 25 (current) | 0.005 | 14.2 | 0.04% |
-| **30** | **0.178** | **16.9** | **1.05%** |
-| 31 | 0.282 | 17.3 | 1.63% (> 1.5%) |
-| 69 (pacer target) | 19.2 | 20.0 | 96% |
+Expected abandons as a share of expected connects, for m calls in flight:
 
-Result: m = 30, so **5** permits. Verdict REDUCED, reason
+| Total in flight m | Pacer (p = 0.52) | Safety (p_hi = 0.568) |
+|---|---|---|
+| 25 (current) | 0.01% | 0.04% |
+| 30 | 0.36% | **1.05%** (largest under 1.5%) |
+| 31 | 0.60% | 1.63% |
+| 35 | **2.72%** (largest under 3%) | 5.88% |
+| 36 | 3.62% | 7.46% |
+
+Pacer target m = 35, so it requests 35 - 25 = **10**. Safety's bound is m = 30, so it issues
+**5** permits. Verdict REDUCED, reason
 `overflow bound: p_hi=0.568, eps=1.500% allows 30 in flight for 20 agents`.
 
 ## Simulation
@@ -495,22 +515,35 @@ over time), 3-12 s ring-to-answer, 25 s no-answer timeout, 15% busy share among 
 
 ### Scenarios (100 agents, provider A, 20 minutes)
 
-| Scenario | Mode | Busy | Calls initiated | Calls connected | Pacer request / safety approval (mean per decision) | Safety verdicts (reduced / rejected / progressive) | Abandoned |
+| Scenario | Mode | Busy | Calls initiated | Calls connected | Pacer request / safety approval (mean per decision) | Safety verdicts (approved / reduced / rejected / progressive) | Abandoned |
 |---|---|---|---|---|---|---|---|
 | A: 20%, 120 s | progressive | 56.5% | 2,708 | 532 | 2.2 / 2.2 | all approved | 0 |
-| | predictive | 82.8% | 3,920 | 780 | 84.6 / 3.1 | 530 / 640 / 31 | 0 |
+| | predictive | 82.8% | 3,920 | 780 | 10.4 / 3.1 | 336 / 525 / 309 / 31 | 0 |
 | B: 50%, 90 s | progressive | 75.7% | 1,889 | 924 | 1.5 / 1.5 | all approved | 0 |
-| | predictive | 83.2% | 2,053 | 1,028 | 40.9 / 1.6 | 723 / 447 / 31 | 0 |
+| | predictive | 83.2% | 2,053 | 1,028 | 5.3 / 1.6 | 74 / 721 / 375 / 31 | 0 |
 | C: 70%, 180 s | progressive | 90.4% | 940 | 636 | 0.7 / 0.7 | all approved | 0 |
-| | predictive | 91.8% | 934 | 655 | 17.6 / 0.7 | 508 / 662 / 31 | 0 |
+| | predictive | 91.8% | 934 | 655 | 1.6 / 0.7 | 324 / 450 / 396 / 31 | 0 |
 | D: 20% -> 70% -> 10%, 120 -> 180 -> 90 s | progressive | 64.5% | 2,347 | 534 | 1.8 / 1.8 | all approved | 0 |
-| | predictive | 80.5% | 3,818 | 694 | 103.0 / 3.0 | 663 / 507 / 31 | 0 |
+| | predictive | 80.5% | 3,818 | 694 | 8.5 / 3.0 | 411 / 473 / 286 / 31 | 0 |
 
 The predictive gain tracks the idle time progressive leaves behind: +47% connects per agent
 hour at a 20% answer rate, +3% at 70% with long calls, where progressive agents are already
 ~90% busy. The first 31 decisions of every predictive run fall back to progressive (cold
-start). The gap between pacer requests and approvals is the difference between the expected
-answer rate with credited agents and the pessimistic bound against free agents only.
+start).
+
+Calls in flight each side aims for (mean over predictive decisions):
+
+| Scenario | Pacer target | Safety bound | Safety / pacer |
+|---|---|---|---|
+| A | 65.9 | 55.3 | 84% |
+| B | 29.8 | 25.8 | 87% |
+| C | 10.1 | 9.1 | 90% |
+| D | 63.4 | 56.9 | 90% |
+
+The difference is the safety margin. Within D it is widest while the answer rate rises from 20%
+to 70% (safety allows 64% of the pacer's target): safety's recent-answer floor and short-window
+check see the increase before the pacer's average does, which is the intended behaviour in the
+direction that causes abandons. While the rate falls to 10%, safety allows 95%.
 
 ### Fault-injection runs (predictive)
 
@@ -534,10 +567,16 @@ not abandons, and the estimate recovers within the 400-outcome window.
 
 | Benchmark | Result |
 |---|---|
-| Contended allocations, 8 processes, 100 agents | 5,326 calls/s (2 write tx each), p99 6.3 ms, 0 invariant errors |
-| Contended allocations, 8 processes, 1,000 agents | 3,064 calls/s, p99 18.7 ms, 0 invariant errors |
-| One safety decision, 100 / 1,000 / 10,000 agents | 3.8 / 20.6 / 54.3 ms p50 (snapshot share: 3.5 / 17.5 / 35.9 ms) |
-| Event pipeline, 25% duplicates | 31,516 ingested/s, 4,078 processed/s |
+| Contended allocations, 8 processes, 100 agents | 3,605 calls/s (2 write tx each), p99 8.6 ms, 0 invariant errors |
+| Contended allocations, 8 processes, 1,000 agents | 2,420 calls/s, p99 20.5 ms, 0 invariant errors |
+| One safety decision, 100 / 1,000 / 10,000 agents | 0.8 / 3.9 / 24.2 ms p50 (snapshot share: 0.5 / 0.7 / 1.4 ms) |
+| Event pipeline, 25% duplicates | 24,067 ingested/s, 3,287 processed/s |
+
+The snapshot reads trigger-maintained counters and indexed windows, so its cost is flat in the
+number of agents. The remaining decision time is proportional to the permits issued (1,847 per
+decision in the 10,000-agent run), not to table size. Counter maintenance adds a write to every
+state change, which costs roughly a quarter of raw allocation throughput; 3,600 calls/s is still
+about 9x the ~400 dials/s that 10,000 agents need.
 
 ### Load model
 
@@ -553,15 +592,18 @@ events/s, ~0.25 write transactions/s.
 
 ### Bottlenecks, in order of impact
 
-1. **Safety decision under the global write lock.** A decision scans tables (agents by state,
-   active calls, last 400 outcomes, 15-minute abandon window) while holding the write lock, so
-   the global budget stays consistent. Its cost grows with table size: with 10 workers at 10,000
-   agents the lock is held ~55% of every second and allocations and events queue behind it.
-   Mitigation: an O(1) snapshot from a `pool_counters` row and per-minute outcome buckets updated
-   in the same transactions that change state; one lease-held decider per pool instead of one
-   per worker; independent agent pools (team / skill / campaign) with their own counters, permits
-   and breaker. Pools below ~50 agents lose much of the predictive headroom, so pools should hold
-   a few hundred agents.
+1. **Safety decision under the global write lock.** Every decision runs inside a write
+   transaction so the budget stays global. Profiling showed the original snapshot spent ~95% of
+   its time in one unindexed sort (average ring time ordered by `outcome_at`); that query now uses
+   the dial-time index, and agent and call counts come from trigger-maintained counter rows
+   instead of `GROUP BY` scans. At 10,000 agents a decision dropped from 54 ms to 24 ms, and the
+   snapshot from 36 ms to 1.4 ms. What remains scales with permits issued, so with 10 workers
+   deciding every second the lock is still held ~24% of the time. Next steps: one lease-held
+   decider per agent pool instead of one per worker; a single permit row carrying a count instead
+   of one row per call; independent pools (team / skill / campaign) with their own counters,
+   permits and breaker, which also removes the counter rows as a single hot spot on Postgres.
+   Pools below ~50 agents lose much of the predictive headroom, so pools should hold a few hundred
+   agents.
 2. **Single writer (SQLite).** Postgres with row locks and `FOR UPDATE SKIP LOCKED` for agent and
    borrower claims; partial unique indexes carry over. Shard databases by pool group when one
    primary's write rate is the limit (~100k agents).
@@ -586,15 +628,13 @@ events/s, ~0.25 write transactions/s.
 
 ## Architecture decisions
 
-The main design choices, with the reasoning and trade-offs of each, are in [docs/ARCHITECTURE_DECISIONS.md](docs/ARCHITECTURE_DECISIONS.md): a single relational database as the only shared state, compare-and-set with leases, single-use signed permits, two-layer safety, the webhook inbox with a monotonic state machine, cohort-based answer-rate statistics, the virtual clock shared by simulation and tests, and per-worker circuit breakers.
+The main design choices, with the reasoning and trade-offs of each, are in [docs/ARCHITECTURE_DECISIONS.md](docs/ARCHITECTURE_DECISIONS.md): a single relational database as the only shared state, compare-and-set with leases, single-use signed permits, two-layer safety, the webhook inbox with a monotonic state machine, cohort-based answer-rate statistics, the virtual clock shared by simulation and tests, per-worker circuit breakers,
+trigger-maintained counters, and one overflow model shared by pacer and safety.
 
 ## Known limitations
 
 * **Conservative bound.** ~15% of agents idle at a 20% answer rate (82.8% busy against ~90% for
   a tuned predictive dialer), by design.
-* **Pacer and safety diverge.** The pacer uses the expected answer rate and credits agents about
-  to free up; safety uses an upper bound and only free agents, so most predictive requests are
-  reduced or rejected (scenario A: 84.6 requested vs 3.1 approved per decision on average).
 * **Single write lock.** SQLite serialises all writes; the first constraint as agents grow.
 * **Ring-and-drop on shocks.** Capacity-shock cancellation hangs up ringing calls; minimum
   ring-time rules would restrict it to calls not yet ringing.
@@ -607,12 +647,12 @@ The main design choices, with the reasoning and trade-offs of each, are in [docs
 1. **Time-aware safety bound.** Answers spread over the ring-time distribution and agents
    freeing at a measurable rate; run in shadow mode next to the static bound and promoted only if
    its realised abandon rate stays under target, behind the same breaker and permit ledger.
-2. **Pacer aligned with safety.** Account for in-flight calls and answer-rate uncertainty the
-   way safety does, so requests land near what can be approved.
-3. **Postgres** past ~1,000 agents, with O(1) pool counters and one decider per pool.
+2. **Permit batching.** One permit row per decision carrying a count, instead of one row per
+   call; this is most of the remaining decision cost at 10,000 agents.
+3. **Postgres** past ~1,000 agents, with per-pool counters and one decider per pool.
 4. **Plivo adapter** on the existing provider interface.
 5. **Compliance:** calling-hour windows (8 am to 7 pm in India), DNC lists, consent,
-   per-borrower contact caps, retention of the inbox and decision tables.
+   per-borrower contact caps, a retention policy for the decision log.
 6. **Borrower-level intelligence**, below.
 
 ### Borrower-level intelligence (not built)
@@ -622,7 +662,7 @@ improve borrower selection, the pacer's answer-rate estimate, and abandon risk:
 
 | Signal | Effect on the dialer |
 |---|---|
-| **Answer rate per segment and hour of day** (segments by pickup history, amount owed, days past due) | Pacer uses the predicted rate of the borrowers next in the queue instead of one global average; requests move closer to safety approvals |
+| **Answer rate per segment and hour of day** (segments by pickup history, amount owed, days past due) | Pacer uses the predicted rate of the borrowers next in the queue instead of one global average |
 | **Best time to call** (each borrower's best hour inside 8 am to 7 pm, unless they requested otherwise) | Higher answer rate: fewer calls initiated per connect, less agent idle time under the same bound |
 | **Priority by amount owed** (large balances get more attempts across different hours, small balances fewer, within per-day contact caps) | Borrower selection, as a score in `borrowers.priority` recomputed every 15 minutes in a batch, so claims stay an index walk |
 | **Tone of the last call** (agent disposition first, speech sentiment later: cooperative, promised to pay, disputed, hostile) | Abandon risk: hostile borrowers get `progressive_only` (always an agent waiting); disputed borrowers pause; promised-to-pay get one follow-up on the date |

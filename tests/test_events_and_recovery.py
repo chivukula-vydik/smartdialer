@@ -188,3 +188,69 @@ def test_provider_unreachable_during_reconcile_gives_up_eventually(stack):
     assert c["state"] == "FAILED" and c["end_reason"] == "provider_lost"
     assert stack.agent(c["agent_id"])["state"] == "AVAILABLE"
     assert (cid, "reconcile") in stack.prov.hangups            # best-effort hang up
+
+
+def test_crash_after_dial_and_call_already_ended_frees_agent(stack):
+    """Dialed, worker died before recording it, provider events lost, provider says the call
+    is over: the reserved agent must be released, not held forever."""
+    def die(point, **kw):
+        if point == "after_dial":
+            raise WorkerCrash("gone")
+    w1 = stack.new_worker("w1", crash_hook=die)
+    d = w1.safety.evaluate(PacingRequest(Mode.PROGRESSIVE, 1, 1), "w1", 1)
+    with pytest.raises(WorkerCrash):
+        w1.allocator.place(d.permits[0], 1)
+    c = stack.db.one("SELECT * FROM calls")
+    stack.prov.calls[c["id"]] = "COMPLETED"          # ended at the provider; events never arrived
+    asked = []
+    real = stack.prov.get_status
+    stack.prov.get_status = lambda cid, now: asked.append(cid) or real(cid, now)
+    w2 = stack.new_worker("w2")
+    w2.house.run(20)
+    c2 = stack.call(c["id"])
+    assert c2["state"] == "FAILED" and c2["end_reason"] == "ended_unseen"
+    assert stack.agent(c["agent_id"])["state"] == "AVAILABLE"
+    b = stack.borrower(c["borrower_id"])
+    assert b["status"] == "PENDING" and b["attempts"] == 0 and b["provider_failures"] == 1
+    w2.house.run(21)
+    assert asked == [c["id"]]                         # not polled again every second
+    deliver(stack, stack.prov.event(c["id"], "ANSWERED", 3), 22, worker=w2)   # late event
+    assert stack.call(c["id"])["state"] == "FAILED"
+    assert check(stack.db) == []
+
+
+def test_prune_removes_old_permits_and_events_only(stack):
+    w = stack.worker
+    d = w.safety.evaluate(PacingRequest(Mode.PROGRESSIVE, 3, 1.0), "w1", 1.0)
+    cid = w.allocator.place(d.permits[0], 1.0)          # one used, two left to expire
+    deliver(stack, stack.prov.event(cid, "RINGING", 2, eid="ring-1"), 2)
+    d2 = w.safety.evaluate(PacingRequest(Mode.PROGRESSIVE, 1, 700.0), "w1", 700.0)
+    fresh_permit = d2.permits[0].id if d2.permits else None
+    n = w.house.prune(701.0)
+    left = {r["id"] for r in stack.db.q("SELECT id FROM permits")}
+    assert not ({p.id for p in d.permits} & left)       # used and expired permits deleted
+    if fresh_permit:
+        assert fresh_permit in left                     # open permit kept
+    assert stack.db.one("SELECT COUNT(*) n FROM call_events")["n"] == 1   # event younger than 1 h
+    w.house.prune(2 + 3601)
+    assert stack.db.one("SELECT COUNT(*) n FROM call_events")["n"] == 0
+    assert stack.db.one("SELECT COUNT(*) n FROM decisions")["n"] == 2    # audit log kept
+    # a redelivery after pruning is accepted again but changes nothing
+    v = stack.call(cid)["version"]
+    deliver(stack, stack.prov.event(cid, "RINGING", 2, eid="ring-1"), 3700)
+    assert stack.call(cid)["version"] == v
+    assert n >= 3
+
+
+def test_provider_clock_ahead_does_not_stretch_abandon_timer(stack):
+    from tests.test_allocator import predictive_permit
+    for a in ("a0", "a1", "a2"):
+        repo.agent_pause(stack.db, a, 0.5)
+    repo.agent_ready(stack.db, "a0", 0.6)
+    cid = stack.worker.allocator.place(predictive_permit(stack, 1.0), 1.0)
+    repo.agent_pause(stack.db, "a0", 1.5)              # nobody free when the borrower answers
+    ev = stack.prov.event(cid, "ANSWERED", 3.0 + 30)   # provider clock 30 s ahead
+    deliver(stack, ev, 3.0)
+    assert stack.call(cid)["answered_at"] == 3.0       # capped at our receipt time
+    stack.worker.service(5.1)
+    assert stack.call(cid)["state"] == "ABANDONED"     # 2 s after the real answer, not 32 s

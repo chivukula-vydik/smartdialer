@@ -167,3 +167,25 @@ def test_agent_drop_cancels_excess_ringing(stack):
     left = stack.db.one("SELECT COUNT(*) n FROM calls WHERE state IN ('INITIATED','RINGING') "
                         "AND agent_id IS NULL")["n"]
     assert left <= d2.numbers["free_agents"] * 4
+
+
+def test_pacer_and_safety_share_the_model_pacer_never_below_safety(stack):
+    """Same overflow model on the same snapshot: the pacer (mean answer rate, 3% target) always
+    asks for at least what safety (upper bound, 1.5%) approves, and not wildly more."""
+    from smartdialer.ledger import read_snapshot
+    from smartdialer.pacing import PredictivePacer
+    repo.add_agents(stack.db, [f"x{i}" for i in range(37)], 0.0)      # 40 agents
+    repo.add_borrowers(stack.db, [(f"bb{i}", "x", 0) for i in range(500)])
+    for ar in (0.2, 0.5, 0.7):
+        with stack.db.tx() as c:
+            c.execute("DELETE FROM calls"); c.execute("DELETE FROM permits")
+        stack.db.rebuild_counters()
+        seed_outcomes(stack.db, 400, ar, 100)
+        fresh(stack.db, 100)
+        snap = read_snapshot(stack.db.conn(), 100)
+        req = PredictivePacer().request(snap)
+        d = ctl(stack.db).evaluate(req, "w", 100)
+        assert d.mode == Mode.PREDICTIVE
+        assert req.calls >= d.approved > 0
+        assert d.numbers["max_inflight_stat"] <= req.rationale["target_in_flight"]
+        assert d.numbers["max_inflight_stat"] >= 0.6 * req.rationale["target_in_flight"]

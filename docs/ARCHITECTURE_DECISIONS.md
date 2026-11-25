@@ -43,7 +43,7 @@ The main design choices in SmartDialer, with the reasoning and cost of each. How
 * **Solves:** pacing bypassing safety, several workers each dialing a full budget against the same
   agents, replay of an old decision, and explainability: every decision is a row in `decisions`
   with the pacer's rationale and safety's inputs.
-* **Makes harder:** one write transaction per decision per worker (3.8 ms at 100 agents, 54 ms
+* **Makes harder:** one write transaction per decision per worker (0.8 ms at 100 agents, 24 ms
   at 10,000, measured), and unused permits occupy budget until they expire, so the TTL must stay
   short.
 
@@ -70,8 +70,9 @@ The main design choices in SmartDialer, with the reasoning and cost of each. How
   regardless of order.
 * **Solves:** duplicate events (dropped at the inbox or a no-op), out-of-order events (stale ones
   ignored), and crashes during processing (rollback; the event stays available to any worker).
-* **Makes harder:** the inbox grows until a retention job prunes it (not built), and processing is
-  serial per worker, so high event rates need partitioning by `call_id`.
+* **Makes harder:** processed events are deleted after an hour, so a provider redelivery older
+  than that is accepted again and relies on the state machine to be a no-op; processing is serial
+  per worker, so high event rates need partitioning by `call_id`.
 
 ## 6. Answer rate measured on resolved dial cohorts
 
@@ -108,3 +109,36 @@ The main design choices in SmartDialer, with the reasoning and cost of each. How
   admits calls and caps approvals at the probe count while half-open.
 * **Makes harder:** workers disagree for a few calls at the start of an outage. A breaker shared
   through the database would converge faster at the cost of a write per dial outcome.
+
+## 9. Trigger-maintained counters for the safety snapshot
+
+* **What:** `agent_counts` and `call_counts` tables kept up to date by database triggers on
+  `agents` and `calls`. The safety snapshot reads these rows instead of counting the tables.
+* **Why:** the snapshot runs under the global write lock every second on every worker, so its
+  cost directly limits throughput. Triggers update the counters in the same transaction as the
+  state change, so they cannot drift from the tables, and no application code path can forget
+  to update them.
+* **Solves:** decision cost growing with the number of agents and calls. Together with fixing an
+  unindexed sort found by profiling, the snapshot went from 36 ms to 1.4 ms at 10,000 agents.
+  The invariant checker compares the counters with real counts in every test and simulation run.
+* **Makes harder:** every state change pays an extra write (about a quarter of raw allocation
+  throughput), and on Postgres a single counter row would become a contended hot spot, so the
+  counters must be split per agent pool before many workers write concurrently.
+
+## 10. Pacer and safety share one overflow model
+
+* **What:** the predictive pacer uses the same binomial overflow bound as the Safety Controller
+  (`stats.py`), on the same count of free agents and with the same 4x dial-ratio ceiling, but with
+  the expected answer rate and the 3% regulatory target. Safety applies it with an upper confidence
+  bound and a 1.5% target.
+* **Why:** an earlier pacer used an expected-value formula and credited agents about to free up.
+  It asked for roughly 25 times what safety approved, so its output carried no useful signal and
+  a pacer 5x too aggressive produced identical results.
+* **Solves:** the pacer's request now means something: safety allows 84-90% of the pacer's
+  in-flight target, and the remaining difference is exactly the safety margin.
+  Utilisation, connects and abandons were unchanged in every scenario, because safety was
+  already the binding limit.
+* **Makes harder:** the pacer no longer looks ahead to agents about to free up, so a time-aware
+  model would have to be added to both sides consistently. The two sides share code, so a bug in
+  `stats.py` affects both; the safety gates that do not use the model still bound the damage.
+

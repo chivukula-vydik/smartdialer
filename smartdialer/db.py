@@ -93,6 +93,7 @@ CREATE TABLE IF NOT EXISTS call_events (
     UNIQUE(provider, event_id)
 );
 CREATE INDEX IF NOT EXISTS ix_events_pending ON call_events(processed, seq);
+CREATE INDEX IF NOT EXISTS ix_events_received ON call_events(processed, received_at);
 
 CREATE TABLE IF NOT EXISTS permits (
     id TEXT PRIMARY KEY,
@@ -106,6 +107,7 @@ CREATE TABLE IF NOT EXISTS permits (
     revoked INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS ix_permits_open ON permits(consumed_by, revoked, expires_at);
+CREATE INDEX IF NOT EXISTS ix_permits_issued ON permits(issued_at);
 
 CREATE TABLE IF NOT EXISTS decisions (
     id TEXT PRIMARY KEY,
@@ -129,6 +131,45 @@ CREATE TABLE IF NOT EXISTS safety_state (
 );
 INSERT OR IGNORE INTO safety_state(id) VALUES (1);
 
+-- Running counters, maintained by triggers in the same transaction as the row they count, so
+-- the safety snapshot reads a handful of rows instead of scanning agents and calls.
+CREATE TABLE IF NOT EXISTS agent_counts (
+    state TEXT PRIMARY KEY,
+    n INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS call_counts (
+    state TEXT NOT NULL,
+    unbacked INTEGER NOT NULL,          -- 1 when agent_id IS NULL
+    n INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (state, unbacked)
+);
+CREATE TRIGGER IF NOT EXISTS tr_agents_ins AFTER INSERT ON agents BEGIN
+    INSERT INTO agent_counts(state, n) VALUES (NEW.state, 1)
+        ON CONFLICT(state) DO UPDATE SET n = n + 1;
+END;
+CREATE TRIGGER IF NOT EXISTS tr_agents_upd AFTER UPDATE OF state ON agents
+WHEN OLD.state <> NEW.state BEGIN
+    UPDATE agent_counts SET n = n - 1 WHERE state = OLD.state;
+    INSERT INTO agent_counts(state, n) VALUES (NEW.state, 1)
+        ON CONFLICT(state) DO UPDATE SET n = n + 1;
+END;
+CREATE TRIGGER IF NOT EXISTS tr_agents_del AFTER DELETE ON agents BEGIN
+    UPDATE agent_counts SET n = n - 1 WHERE state = OLD.state;
+END;
+CREATE TRIGGER IF NOT EXISTS tr_calls_ins AFTER INSERT ON calls BEGIN
+    INSERT INTO call_counts(state, unbacked, n) VALUES (NEW.state, NEW.agent_id IS NULL, 1)
+        ON CONFLICT(state, unbacked) DO UPDATE SET n = n + 1;
+END;
+CREATE TRIGGER IF NOT EXISTS tr_calls_upd AFTER UPDATE OF state, agent_id ON calls
+WHEN OLD.state <> NEW.state OR (OLD.agent_id IS NULL) <> (NEW.agent_id IS NULL) BEGIN
+    UPDATE call_counts SET n = n - 1 WHERE state = OLD.state AND unbacked = (OLD.agent_id IS NULL);
+    INSERT INTO call_counts(state, unbacked, n) VALUES (NEW.state, NEW.agent_id IS NULL, 1)
+        ON CONFLICT(state, unbacked) DO UPDATE SET n = n + 1;
+END;
+CREATE TRIGGER IF NOT EXISTS tr_calls_del AFTER DELETE ON calls BEGIN
+    UPDATE call_counts SET n = n - 1 WHERE state = OLD.state AND unbacked = (OLD.agent_id IS NULL);
+END;
+
 CREATE TABLE IF NOT EXISTS workers (
     id TEXT PRIMARY KEY,
     heartbeat REAL NOT NULL
@@ -144,6 +185,17 @@ class Db:
         self.fast = fast
         self._local = threading.local()
         self.conn().executescript(SCHEMA)
+        self.rebuild_counters()
+
+    def rebuild_counters(self):
+        """Recompute the trigger-maintained counters from the tables (startup, or a database
+        created before the counters existed). Normal operation never needs this."""
+        with self.tx() as c:
+            c.execute("DELETE FROM agent_counts")
+            c.execute("INSERT INTO agent_counts(state, n) SELECT state, COUNT(*) FROM agents GROUP BY state")
+            c.execute("DELETE FROM call_counts")
+            c.execute("INSERT INTO call_counts(state, unbacked, n) "
+                      "SELECT state, agent_id IS NULL, COUNT(*) FROM calls GROUP BY state, agent_id IS NULL")
 
     def conn(self) -> sqlite3.Connection:
         c = getattr(self._local, "c", None)

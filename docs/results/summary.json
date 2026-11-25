@@ -44,7 +44,8 @@
    "reconciled_failed": 1,
    "stale_closed": 1,
    "leases_expired": 0,
-   "presence_logouts": 0
+   "presence_logouts": 0,
+   "pruned": 1445
   },
   "provider_trips": {
    "A": 0
@@ -75,8 +76,9 @@
   "connects_per_agent_hour": 23.4,
   "safety_verdicts": {
    "FALLBACK_PROGRESSIVE": 31,
-   "REDUCED": 530,
-   "REJECTED": 640
+   "REDUCED": 525,
+   "REJECTED": 309,
+   "APPROVED": 336
   },
   "event_outcomes": {
    "applied": 8472,
@@ -100,7 +102,8 @@
    "reconciled_failed": 4,
    "stale_closed": 0,
    "leases_expired": 0,
-   "presence_logouts": 0
+   "presence_logouts": 0,
+   "pruned": 2142
   },
   "provider_trips": {
    "A": 0
@@ -153,7 +156,8 @@
    "reconciled_failed": 2,
    "stale_closed": 0,
    "leases_expired": 0,
-   "presence_logouts": 0
+   "presence_logouts": 0,
+   "pruned": 968
   },
   "provider_trips": {
    "A": 0
@@ -184,8 +188,9 @@
   "connects_per_agent_hour": 30.84,
   "safety_verdicts": {
    "FALLBACK_PROGRESSIVE": 31,
-   "REJECTED": 447,
-   "REDUCED": 723
+   "APPROVED": 74,
+   "REDUCED": 721,
+   "REJECTED": 375
   },
   "event_outcomes": {
    "applied": 5034,
@@ -209,7 +214,8 @@
    "reconciled_failed": 1,
    "stale_closed": 1,
    "leases_expired": 0,
-   "presence_logouts": 0
+   "presence_logouts": 0,
+   "pruned": 1050
   },
   "provider_trips": {
    "A": 0
@@ -263,7 +269,8 @@
    "reconciled_failed": 2,
    "stale_closed": 1,
    "leases_expired": 0,
-   "presence_logouts": 0
+   "presence_logouts": 0,
+   "pruned": 525
   },
   "provider_trips": {
    "A": 0
@@ -294,8 +301,9 @@
   "connects_per_agent_hour": 19.65,
   "safety_verdicts": {
    "FALLBACK_PROGRESSIVE": 31,
-   "REDUCED": 508,
-   "REJECTED": 662
+   "APPROVED": 324,
+   "REDUCED": 450,
+   "REJECTED": 396
   },
   "event_outcomes": {
    "applied": 2423,
@@ -319,7 +327,8 @@
    "reconciled_failed": 1,
    "stale_closed": 1,
    "leases_expired": 0,
-   "presence_logouts": 0
+   "presence_logouts": 0,
+   "pruned": 516
   },
   "provider_trips": {
    "A": 0
@@ -373,7 +382,8 @@
    "reconciled_failed": 4,
    "stale_closed": 1,
    "leases_expired": 0,
-   "presence_logouts": 0
+   "presence_logouts": 0,
+   "pruned": 1202
   },
   "provider_trips": {
    "A": 0
@@ -404,8 +414,9 @@
   "connects_per_agent_hour": 20.82,
   "safety_verdicts": {
    "FALLBACK_PROGRESSIVE": 31,
-   "REDUCED": 663,
-   "REJECTED": 507
+   "REDUCED": 473,
+   "REJECTED": 286,
+   "APPROVED": 411
   },
   "event_outcomes": {
    "applied": 8119,
@@ -429,7 +440,8 @@
    "reconciled_failed": 1,
    "stale_closed": 0,
    "leases_expired": 0,
-   "presence_logouts": 0
+   "presence_logouts": 0,
+   "pruned": 1738
   },
   "provider_trips": {
    "A": 0
@@ -460,8 +472,9 @@
   "connects_per_agent_hour": 29.79,
   "safety_verdicts": {
    "FALLBACK_PROGRESSIVE": 31,
-   "REDUCED": 744,
-   "REJECTED": 426
+   "REDUCED": 743,
+   "REJECTED": 383,
+   "APPROVED": 44
   },
   "event_outcomes": {
    "applied": 4864,
@@ -487,7 +500,8 @@
    "reconciled_failed": 51,
    "stale_closed": 5,
    "leases_expired": 0,
-   "presence_logouts": 0
+   "presence_logouts": 0,
+   "pruned": 1099
   },
   "provider_trips": {
    "B": 0
@@ -518,8 +532,9 @@
   "connects_per_agent_hour": 23.61,
   "safety_verdicts": {
    "FALLBACK_PROGRESSIVE": 31,
-   "REDUCED": 586,
-   "REJECTED": 584
+   "APPROVED": 163,
+   "REDUCED": 585,
+   "REJECTED": 422
   },
   "event_outcomes": {
    "applied": 5736,
@@ -543,7 +558,8 @@
    "reconciled_failed": 12,
    "stale_closed": 0,
    "leases_expired": 0,
-   "presence_logouts": 0
+   "presence_logouts": 0,
+   "pruned": 1353
   },
   "provider_trips": {
    "A": 9
@@ -585,8 +601,9 @@
   "connects_per_agent_hour": 23.04,
   "safety_verdicts": {
    "FALLBACK_PROGRESSIVE": 31,
-   "REDUCED": 558,
-   "REJECTED": 612
+   "APPROVED": 178,
+   "REDUCED": 557,
+   "REJECTED": 435
   },
   "event_outcomes": {
    "applied": 5961,
@@ -611,7 +628,8 @@
    "reconciled_failed": 7,
    "stale_closed": 0,
    "leases_expired": 0,
-   "presence_logouts": 0
+   "presence_logouts": 0,
+   "pruned": 1329
   },
   "provider_trips": {
    "A": 2,
@@ -654,8 +672,9 @@
   "connects_per_agent_hour": 17.04,
   "safety_verdicts": {
    "FALLBACK_PROGRESSIVE": 31,
-   "REDUCED": 504,
-   "REJECTED": 666
+   "REDUCED": 499,
+   "REJECTED": 403,
+   "APPROVED": 268
   },
   "event_outcomes": {
    "applied": 6581,
@@ -679,7 +698,8 @@
    "reconciled_failed": 3,
    "stale_closed": 0,
    "leases_expired": 0,
-   "presence_logouts": 0
+   "presence_logouts": 0,
+   "pruned": 1956
   },
   "provider_trips": {
    "A": 0
@@ -716,8 +736,9 @@
   "connects_per_agent_hour": 24.42,
   "safety_verdicts": {
    "FALLBACK_PROGRESSIVE": 62,
-   "REJECTED": 742,
-   "REDUCED": 578
+   "APPROVED": 266,
+   "REDUCED": 578,
+   "REJECTED": 476
   },
   "event_outcomes": {
    "applied": 5826,
@@ -741,7 +762,8 @@
    "reconciled_failed": 3,
    "stale_closed": 0,
    "leases_expired": 0,
-   "presence_logouts": 0
+   "presence_logouts": 0,
+   "pruned": 1228
   },
   "provider_trips": {
    "A": 0
@@ -756,7 +778,7 @@
    },
    {
     "t": 200.0,
-    "crash": "w1 crashed at after_dial (87618c1f)"
+    "crash": "w1 crashed at after_dial (07039ae0)"
    },
    {
     "t": 300.0,
@@ -765,7 +787,7 @@
    },
    {
     "t": 301.0,
-    "crash": "w2 crashed at after_reserve (94e02620)"
+    "crash": "w2 crashed at after_reserve (e0217852)"
    },
    {
     "t": 320.0,
@@ -796,8 +818,9 @@
   "connects_per_agent_hour": 23.58,
   "safety_verdicts": {
    "FALLBACK_PROGRESSIVE": 93,
-   "REJECTED": 2889,
-   "REDUCED": 621
+   "APPROVED": 559,
+   "REDUCED": 621,
+   "REJECTED": 2330
   },
   "event_outcomes": {
    "applied": 5983,
@@ -821,7 +844,8 @@
    "reconciled_failed": 3,
    "stale_closed": 0,
    "leases_expired": 0,
-   "presence_logouts": 0
+   "presence_logouts": 0,
+   "pruned": 1303
   },
   "provider_trips": {
    "A": 0
@@ -852,9 +876,9 @@
   "connects_per_agent_hour": 23.76,
   "safety_verdicts": {
    "FALLBACK_PROGRESSIVE": 899,
-   "REDUCED": 139,
-   "REJECTED": 160,
-   "APPROVED": 3
+   "APPROVED": 278,
+   "REDUCED": 4,
+   "REJECTED": 20
   },
   "event_outcomes": {
    "applied": 6207,
@@ -878,7 +902,8 @@
    "reconciled_failed": 2,
    "stale_closed": 0,
    "leases_expired": 0,
-   "presence_logouts": 0
+   "presence_logouts": 0,
+   "pruned": 2220
   },
   "provider_trips": {
    "A": 0
@@ -909,8 +934,9 @@
   "connects_per_agent_hour": 30.84,
   "safety_verdicts": {
    "FALLBACK_PROGRESSIVE": 31,
-   "REJECTED": 447,
-   "REDUCED": 723
+   "APPROVED": 72,
+   "REDUCED": 723,
+   "REJECTED": 375
   },
   "event_outcomes": {
    "applied": 5034,
@@ -934,7 +960,8 @@
    "reconciled_failed": 1,
    "stale_closed": 1,
    "leases_expired": 0,
-   "presence_logouts": 0
+   "presence_logouts": 0,
+   "pruned": 1050
   },
   "provider_trips": {
    "A": 0

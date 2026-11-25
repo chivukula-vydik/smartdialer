@@ -43,11 +43,11 @@ class Snapshot:
 
 def read_snapshot(c, now, long_window=400, short_window=40, abandon_window_s=900.0,
                   presence_ttl_s=15.0, stats_n=200, resolve_lag_s=30.0):
-    agents = {r[0]: r[1] for r in c.execute("SELECT state, COUNT(*) FROM agents GROUP BY state")}
+    # Counts come from trigger-maintained counter rows (see db.py), not table scans.
+    agents = {r[0]: r[1] for r in c.execute("SELECT state, n FROM agent_counts WHERE n > 0")}
     unbacked = backed = waiting = 0
     for st, no_agent, n in c.execute(
-            f"SELECT state, agent_id IS NULL, COUNT(*) FROM calls WHERE state IN {ACTIVE_STATES} "
-            f"GROUP BY state, agent_id IS NULL"):
+            f"SELECT state, unbacked, n FROM call_counts WHERE state IN {ACTIVE_STATES} AND n > 0"):
         if st in ("QUEUED", "RESERVED", "INITIATED", "RINGING"):
             if no_agent:
                 unbacked += n
@@ -71,7 +71,7 @@ def read_snapshot(c, now, long_window=400, short_window=40, abandon_window_s=900
         "WHERE dialed_at>=? AND provider_call_id IS NOT NULL", (now - resolve_lag_s,)).fetchone()
     ring = c.execute(
         "SELECT AVG(answered_at - dialed_at) FROM (SELECT answered_at, dialed_at FROM calls "
-        "WHERE net_outcome='ANSWER' AND dialed_at IS NOT NULL ORDER BY outcome_at DESC LIMIT ?)",
+        "WHERE net_outcome='ANSWER' AND dialed_at IS NOT NULL ORDER BY dialed_at DESC LIMIT ?)",
         (stats_n,)).fetchone()[0]
     talk = c.execute(
         "SELECT AVG(ended_at - connected_at) FROM (SELECT ended_at, connected_at FROM calls "
