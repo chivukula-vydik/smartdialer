@@ -697,8 +697,8 @@ trigger-maintained counters, one overflow model shared by pacer and safety, and 
   lags each switch; one of 11 clustered runs reached 4.17% abandons (see Mixed borrower
   segments). Shuffling borrowers within a priority band avoids this operationally; the fix is a
   per-borrower predicted answer rate inside the bound (roadmap 7).
-* **Conservative bound.** ~15% of agents idle at a 20% answer rate (82.8% busy against ~90% for
-  a tuned predictive dialer), by design.
+* **Conservative bound.** ~15% of agents idle at a 20% answer rate (82.8% busy), by design: the
+  bound assumes every ringing call could answer at once and no agent frees meanwhile.
 * **Fixed dial-ratio ceiling.** 4x caps predictive at low answer rates (57% busy at 10% /
   60 s, see the sweep) even when the abandon bound has room.
 * **Single write lock.** SQLite serialises all writes; the first constraint as agents grow.
